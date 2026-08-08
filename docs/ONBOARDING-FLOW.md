@@ -24,13 +24,13 @@ other, and `accountState` means the same thing whichever was used.
 | - | ----------------------------- | ------------------------------------- | ------ |
 | 1 | Enter phone                   | `POST /api/v1/public/auth/request-otp` | ✅ done |
 | 2 | Enter the 6-digit code        | `POST /api/v1/public/auth/verify-otp`  | ✅ done |
-| 3 | Pick a field (plumbing, …)    | `GET /api/v1/public/categories`        | 🔨 task 1 |
+| 3 | Pick a field (plumbing, …)    | `GET /api/v1/public/categories`        | ✅ done |
 | 4 | "Customer or technician?"     | `PATCH /api/v1/me/role`                | ✅ done |
 | 5a| Customer → profile page       | `POST /api/v1/customer/profile`        | ✅ done |
 | 5b| Technician → documents form   | `POST /api/v1/technician/profile`      | ✅ done |
-|   | ↳ the file upload itself      | `POST /api/v1/public/uploads`          | 🔨 task 4 |
+|   | ↳ the file upload itself      | `POST /api/v1/public/uploads`          | ✅ done |
 | — | **4 + 5 on one form**         | `POST /api/v1/me/signup`               | ✅ done |
-|   | Admin approves the technician | `PATCH /api/v1/admin/technicians/:id/verification` | 🔨 task 5 |
+|   | Admin approves the technician | `PATCH /api/v1/admin/technicians/:id/verification` | ✅ done |
 
 Every 🔨 endpoint **already exists in the route map** — the files are written,
 the functions are named, the bodies are empty. Calling one today returns:

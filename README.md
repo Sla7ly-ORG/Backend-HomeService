@@ -90,7 +90,7 @@ there. Nothing about users is scattered anywhere else.
 
 | Prefix               | Audience         | Guard                                |
 | -------------------- | ---------------- | ------------------------------------ |
-| `/api/v1/public`     | anyone           | none — login, refresh, categories     |
+| `/api/v1/public`     | anyone           | none — login, refresh, categories; `/uploads` is the one exception and needs a token |
 | `/api/v1/me`         | the caller       | `requireAuth`                        |
 | `/api/v1/customer`   | customer-facing  | `requireAuth` + `requireRole("CUSTOMER")` |
 | `/api/v1/technician` | technician-facing | `requireAuth` + `requireRole("TECHNICIAN")` |
@@ -129,11 +129,22 @@ src/
       auth.tokens.ts          signs and verifies the tokens
       auth.middleware.ts      ⭐ requireAuth / requireRole / currentUser
       auth.sms.ts             ⚠️ where a real SMS provider plugs in
-    categories/               🔨 task 1 — scaffolded, bodies empty
-    technicians/              🔨 tasks 3 & 5 — scaffolded, bodies empty
+    categories/               the fields a job can be in (task 1)
+    technicians/              documents, and the admin approval queue
     uploads/
       uploads.storage.ts      where files go: limits, renaming, cleanup
-      uploads.public.routes.ts   🔨 task 4 — the standalone upload endpoint
+      uploads.public.routes.ts   the standalone upload endpoint
+    points/                   🔨 task 6 — the wallet the AI estimate spends
+    requests/                 🔨 tasks 7, 8, 10 & 11 — the customer's problem
+    ai/
+      ai.client.ts            🔨 task 8 — ⚠️ the only file that knows the model
+    offers/                   🔨 tasks 10 & 11 — fan-out, fees, choosing one
+
+  realtime/                   🔨 task 9 — the live feed, over Socket.IO
+    realtime.events.ts        ⭐ the event contract: names, rooms, payloads
+    realtime.auth.ts          the handshake guard — requireAuth's twin
+    realtime.server.ts        the io instance, sharing the HTTP port
+    realtime.emit.ts          the only file the offer modules import
 
   core/                       shared plumbing, used by every module
     env.ts                    validated environment variables
@@ -144,10 +155,12 @@ src/
     errors.ts                 ApiError
     error-handler.ts          turns any error into a JSON response
     pagination.ts             ?page= & ?limit= helpers
+    geo.ts                    🔨 task 10 — how far away a technician is
     serialize.ts              lets JSON.stringify handle BigInt ids
 
   generated/prisma/           generated client (gitignored, don't edit)
 prisma/schema.prisma          data model
+scripts/socket-test.mjs       prints every socket event sent to one user
 ```
 
 Inside a module each file has one job, and they call each other in one
@@ -186,8 +199,8 @@ Three written docs, three audiences:
 
 | Doc | For | Contains |
 | --- | --- | --- |
-| [`docs/APP-FLOW.md`](docs/APP-FLOW.md) | the app team | every screen, the call it makes, what to do with the answer |
-| [`docs/INTERN-TASKS.md`](docs/INTERN-TASKS.md) | whoever is writing endpoints | the 31 functions still to implement, with acceptance tests |
+| [`docs/APP-FLOW.md`](docs/APP-FLOW.md) | the app team | every screen, the call it makes, what to do with the answer — signup, then ordering a service, then the socket events |
+| [`docs/INTERN-TASKS.md`](docs/INTERN-TASKS.md) | whoever is writing endpoints | the 67 items still to implement, in 6 tasks, with acceptance tests |
 | [`docs/ONBOARDING-FLOW.md`](docs/ONBOARDING-FLOW.md) | anyone changing the design | why the flow works the way it does |
 
 **Phone login** — how a user signs up and signs in.
