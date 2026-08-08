@@ -3,6 +3,7 @@ import { idField, idParams } from "../../core/fields.js";
 import { nationalIdField } from "../../core/national-id.js";
 import { paginationQuery } from "../../core/pagination.js";
 import { profileFields } from "../users/users.schema.js";
+import { VerificationStatus } from "../../generated/prisma/enums.js";
 
 // TASKS 3 & 5 - Technician profiles. See docs/ONBOARDING-FLOW.md.
 
@@ -65,7 +66,12 @@ export const createTechnicianProfileBody = z.object({
  * Use `z.enum(VerificationStatus)` from generated/prisma/enums.js, then narrow
  * it - PENDING is not a decision an admin can submit.
  */
-export const updateVerificationBody = z.object({});
+export const updateVerificationBody = z.object({
+  verificationStatus: z.enum([
+    VerificationStatus.VERIFIED,
+    VerificationStatus.REJECTED,
+  ]),
+});
 
 /**
  * GET /admin/technicians - task 5, the approval queue.
@@ -73,7 +79,10 @@ export const updateVerificationBody = z.object({});
  * TODO(task 5): extend with an optional `verificationStatus` filter so admins
  * can list just the PENDING ones. Copy listUsersQuery.
  */
-export const listTechniciansQuery = paginationQuery;
+export const listTechniciansQuery = paginationQuery.extend({
+  verificationStatus: z.enum(VerificationStatus).optional(),
+});
+
 
 export type CreateTechnicianProfileBody = z.infer<
   typeof createTechnicianProfileBody
@@ -81,3 +90,4 @@ export type CreateTechnicianProfileBody = z.infer<
 export type TechnicianDocuments = z.infer<typeof technicianDocuments>;
 export type UpdateVerificationBody = z.infer<typeof updateVerificationBody>;
 export type ListTechniciansQuery = z.infer<typeof listTechniciansQuery>;
+

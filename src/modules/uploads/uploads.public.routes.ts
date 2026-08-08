@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { ApiError } from "../../core/errors.js";
+import { messages } from "../../core/messages.js";
+import { publicUrlFor, upload } from "./uploads.storage.js";
 
 /**
  * TASK 4 - the standalone upload endpoint, for a client that uploads a document
@@ -21,13 +23,16 @@ import { ApiError } from "../../core/errors.js";
 export const uploadsPublicRoutes = Router();
 
 /** POST /api/v1/public/uploads - multipart/form-data, field name "file" */
-uploadsPublicRoutes.post("/", async (_req, res) => {
-  // TODO(task 4): add `upload.single("file")` as route middleware, then
-  //   res.status(201).json({ data: { url: publicUrlFor(req.file) } });
-  //
-  // `upload.single` leaves `req.file` undefined when the request carried no
-  // file at all - the filter never runs, so nothing rejects it. That case has
-  // to become a 400 here, or the line above reads `.filename` of undefined and
-  // a missing field turns into a 500.
-  throw ApiError.notImplemented();
-});
+uploadsPublicRoutes.post(
+  "/",
+  upload.single("file"),
+  async (req, res) => {
+    // upload.single leaves req.file undefined when no file was sent - the
+    // filter never runs in that case, so nothing rejects it on its own.
+    if (!req.file) {
+      throw ApiError.badRequest(messages.uploads.fileRequired);
+    }
+
+    res.status(201).json({ data: { url: publicUrlFor(req.file) } });
+  },
+);

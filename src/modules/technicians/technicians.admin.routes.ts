@@ -1,5 +1,9 @@
 import { Router } from "express";
 import { ApiError } from "../../core/errors.js";
+import { listTechniciansQuery, technicianIdParams, updateVerificationBody } from "./technicians.schema.js";
+import { toTechnicianProfileAdminResponse } from "./technicians.mapper.js";
+import { paginationMeta } from "../../core/pagination.js";
+import * as techniciansService from "./technicians.service.js";
 
 /**
  * TASK 5 - the approval queue. Mounted at /api/v1/admin/technicians.
@@ -10,17 +14,21 @@ import { ApiError } from "../../core/errors.js";
 export const techniciansAdminRoutes = Router();
 
 /** GET /api/v1/admin/technicians?verificationStatus=PENDING */
-techniciansAdminRoutes.get("/", async (_req, res) => {
-  // TODO(task 5): parse listTechniciansQuery, listTechnicians, then reply with
-  //   { data: [...toTechnicianProfileAdminResponse], meta: paginationMeta(...) }
-  // Copy the list handler from users.admin.routes.ts.
-  throw ApiError.notImplemented();
-});
+techniciansAdminRoutes.get("/", async (req, res) => {
+  const query = listTechniciansQuery.parse(req.query);
+  const { technicians, total } = await techniciansService.listTechnicians(query);
+
+  res.json({
+    data: technicians.map(toTechnicianProfileAdminResponse),
+    meta: paginationMeta(query, total),
+  });
+});;
 
 /** PATCH /api/v1/admin/technicians/:id/verification */
-techniciansAdminRoutes.patch("/:id/verification", async (_req, res) => {
-  // TODO(task 5): parse technicianIdParams + updateVerificationBody, then
-  // setVerificationStatus. Approving here is what moves the technician from
-  // WAITING_FOR_APPROVAL to READY.
-  throw ApiError.notImplemented();
+techniciansAdminRoutes.patch("/:id/verification", async (req, res) => {
+  const { id } = technicianIdParams.parse(req.params);
+  const body = updateVerificationBody.parse(req.body);
+  const profile = await techniciansService.setVerificationStatus(id, body);
+
+  res.json({ data: toTechnicianProfileAdminResponse(profile) });
 });

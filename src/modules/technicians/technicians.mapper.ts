@@ -1,5 +1,5 @@
 import type { TechnicianProfile } from "../../generated/prisma/client.js";
-import { ApiError } from "../../core/errors.js";
+
 
 // TASKS 3 & 5. Reference: src/modules/users/users.mapper.ts.
 
@@ -39,5 +39,9 @@ export type TechnicianProfileResponse = ReturnType<
  * not be tempted to add a flag to the function above.
  */
 export function toTechnicianProfileAdminResponse(profile: TechnicianProfile) {
-  throw ApiError.notImplemented();
+  return {
+    ...toTechnicianProfileResponse(profile),
+    nationalId: profile.nationalId,
+    criminalRecordFile: profile.criminalRecordFile,
+  };
 }

@@ -6,6 +6,8 @@ import type {
   ListTechniciansQuery,
   UpdateVerificationBody,
 } from "./technicians.schema.js";
+import { Prisma } from "../../generated/prisma/client.js";
+import { skipTake } from "../../core/pagination.js";
 
 // TASKS 3 & 5 - all database access for technician profiles.
 // Reference: src/modules/users/users.service.ts.
@@ -94,8 +96,26 @@ export async function findTechnicianProfileByUserId(userId: bigint) {
  * `include: { user: true, category: true }` so the admin sees who and what.
  */
 export async function listTechnicians(query: ListTechniciansQuery) {
-  // TODO(task 5): copy listUsers - same where/findMany/count shape
-  throw ApiError.notImplemented();
+  const where: Prisma.TechnicianProfileWhereInput = {
+    ...(query.verificationStatus
+      ? { verificationStatus: query.verificationStatus }
+      : {}),
+  };
+
+  const [technicians, total] = await Promise.all([
+    prisma.technicianProfile.findMany({
+      where,
+      include: {
+        user: true,
+        category: true,
+      },
+      orderBy: { createdAt: "desc" },
+      ...skipTake(query),
+    }),
+    prisma.technicianProfile.count({ where }),
+  ]);
+
+  return { technicians, total };
 }
 
 /**
@@ -108,10 +128,32 @@ export async function listTechnicians(query: ListTechniciansQuery) {
  *   REJECTED  -> profile.verificationStatus = REJECTED
  *                leave user.status as PENDING so they can submit again
  */
+
 export async function setVerificationStatus(
   technicianProfileId: bigint,
   data: UpdateVerificationBody,
 ) {
-  // TODO(task 5)
-  throw ApiError.notImplemented();
+  return prisma.$transaction(async (tx) => {
+    const profile = await tx.technicianProfile.update({
+      where: { id: technicianProfileId },
+      data: {
+        verificationStatus: data.verificationStatus,
+      },
+      include: {
+        user: true,
+        category: true,
+      },
+    });
+
+    if (data.verificationStatus === "VERIFIED") {
+      await tx.user.update({
+        where: { id: profile.userId },
+        data: {
+          status: "ACTIVE",
+        },
+      });
+    }
+
+    return profile;
+  });
 }
