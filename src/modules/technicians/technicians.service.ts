@@ -97,6 +97,9 @@ export async function findTechnicianProfileByUserId(userId: bigint) {
  */
 export async function listTechnicians(query: ListTechniciansQuery) {
   const where: Prisma.TechnicianProfileWhereInput = {
+    user: {
+      deletedAt: null,
+    },
     ...(query.verificationStatus
       ? { verificationStatus: query.verificationStatus }
       : {}),
@@ -146,12 +149,19 @@ export async function setVerificationStatus(
     });
 
     if (data.verificationStatus === "VERIFIED") {
-      await tx.user.update({
-        where: { id: profile.userId },
+      const { count } = await tx.user.updateMany({
+        where: {
+          id: profile.userId,
+          deletedAt: null,
+        },
         data: {
           status: "ACTIVE",
         },
       });
+
+      if (count === 0) {
+        throw ApiError.notFound(messages.users.notFound);
+      }
     }
 
     return profile;
