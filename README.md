@@ -90,7 +90,7 @@ there. Nothing about users is scattered anywhere else.
 
 | Prefix               | Audience         | Guard                                |
 | -------------------- | ---------------- | ------------------------------------ |
-| `/api/v1/public`     | anyone           | none — login, refresh, categories     |
+| `/api/v1/public`     | anyone           | none — login, refresh, categories; `/uploads` is the one exception and needs a token |
 | `/api/v1/me`         | the caller       | `requireAuth`                        |
 | `/api/v1/customer`   | customer-facing  | `requireAuth` + `requireRole("CUSTOMER")` |
 | `/api/v1/technician` | technician-facing | `requireAuth` + `requireRole("TECHNICIAN")` |
@@ -130,10 +130,10 @@ src/
       auth.middleware.ts      ⭐ requireAuth / requireRole / currentUser
       auth.sms.ts             ⚠️ where a real SMS provider plugs in
     categories/               the fields a job can be in (task 1)
-    technicians/              🔨 task 5 — the admin approval queue
+    technicians/              documents, and the admin approval queue
     uploads/
       uploads.storage.ts      where files go: limits, renaming, cleanup
-      uploads.public.routes.ts   🔨 task 4 — the standalone upload endpoint
+      uploads.public.routes.ts   the standalone upload endpoint
     points/                   🔨 task 6 — the wallet the AI estimate spends
     requests/                 🔨 tasks 7, 8, 10 & 11 — the customer's problem
     ai/
@@ -200,7 +200,7 @@ Three written docs, three audiences:
 | Doc | For | Contains |
 | --- | --- | --- |
 | [`docs/APP-FLOW.md`](docs/APP-FLOW.md) | the app team | every screen, the call it makes, what to do with the answer — signup, then ordering a service, then the socket events |
-| [`docs/INTERN-TASKS.md`](docs/INTERN-TASKS.md) | whoever is writing endpoints | the 77 items still to implement, in 8 tasks, with acceptance tests |
+| [`docs/INTERN-TASKS.md`](docs/INTERN-TASKS.md) | whoever is writing endpoints | the 67 items still to implement, in 6 tasks, with acceptance tests |
 | [`docs/ONBOARDING-FLOW.md`](docs/ONBOARDING-FLOW.md) | anyone changing the design | why the flow works the way it does |
 
 **Phone login** — how a user signs up and signs in.

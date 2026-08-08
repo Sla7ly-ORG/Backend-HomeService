@@ -1,6 +1,6 @@
 # What to build
 
-98 items, 11 tasks — tasks 1, 2 and 3 are done, so 77 are left, in two halves.
+98 items, 11 tasks — tasks 1 to 5 are done, so 67 are left, all in the second half.
 
 **Every task is scaffolded.** The files exist, they are plugged into the API,
 and each function has a `throw ApiError.notImplemented()` where your code goes
@@ -18,8 +18,8 @@ app team can wire their screens up against them before you have written a line.
 | 1 | Categories | 13 | ✅ done |
 | 2 | Customer profile | 3 | ✅ done |
 | 3 | Technician profile | 5 | ✅ done |
-| 4 | File upload | 3 | |
-| 5 | Admin approval | 7 | |
+| 4 | File upload | 3 | ✅ done |
+| 5 | Admin approval | 7 | ✅ done |
 | 6 | Points wallet | 15 | |
 | 7 | Service request + past orders | 15 | |
 | 8 | AI estimation | 7 | |
@@ -27,11 +27,11 @@ app team can wire their screens up against them before you have written a line.
 | 10 | Publish + the technician's feed | 18 | |
 | 11 | Choosing a technician | 6 | |
 
-Order: **4 → 5 → 6 → 7 → 8 → 9 → 10 → 11.** Tasks 1, 2 and 3 are finished; read
-them as the worked examples — and note that task 5 touches the same files as
-task 3. The second half is a chain: 8 spends what 6 built, 10 publishes what 7
-created and pushes it down the socket 9 opened, 11 finishes what 10 started.
-Task 8 also needs task 4, because the AI needs a photo to look at.
+Order: **6 → 7 → 8 → 9 → 10 → 11.** Tasks 1 to 5 are finished; read them as the
+worked examples — `src/modules/users/` for the shape, task 5 for a two-row
+transaction, task 4 for a file. The rest is a chain: 8 spends what 6 built, 10
+publishes what 7 created and pushes it down the socket 9 opened, 11 finishes
+what 10 started.
 
 Task 9 is the one that can be done out of order — it is a channel with no
 opinions about what goes through it, so it can be built alongside 7 and 8 by a
@@ -248,7 +248,7 @@ never `COMPLETE_PROFILE`. Response must not contain `nationalId`.
 
 ---
 
-# Task 4 — File upload
+# Task 4 — File upload ✅ done
 
 The app uploads each document, gets a URL, sends those URLs with task 3's form.
 
@@ -264,7 +264,7 @@ submit a form rather than with it.
 
 **`uploads.public.routes.ts`**
 
-- [ ] `POST /` — `multipart/form-data`, field `file` → 201
+- [x] `POST /` — `multipart/form-data`, field `file` → 201
       `{ data: { url: "/uploads/…" } }`
 
       Import `upload` and `publicUrlFor` from `./uploads.storage.js`; do **not**
@@ -272,12 +272,12 @@ submit a form rather than with it.
       `upload.single("file")` as route middleware, then
       `res.status(201).json({ data: { url: publicUrlFor(req.file!) } })`.
 
-- [ ] Decide what an empty request does. `upload.single` leaves `req.file`
+- [x] Decide what an empty request does. `upload.single` leaves `req.file`
       undefined when no file was sent, and that has to be a 400, not a crash.
 
 **`src/api/public.ts`**
 
-- [ ] Worth moving behind `requireAuth` while you are in there — see the note in
+- [x] Worth moving behind `requireAuth` while you are in there — see the note in
       that file. Everyone who uploads has a token by the time they do.
 
 ### Test it
@@ -291,34 +291,34 @@ curl -X POST localhost:3000/api/v1/public/uploads                       # 400, n
 
 ---
 
-# Task 5 — Admin approval
+# Task 5 — Admin approval ✅ done
 
 Until an admin does this, every technician sits on the waiting screen.
 
 **`technicians.schema.ts`**
 
-- [ ] `updateVerificationBody` — `VERIFIED` or `REJECTED` only (not `PENDING`)
-- [ ] `listTechniciansQuery` — add an optional `verificationStatus` filter.
+- [x] `updateVerificationBody` — `VERIFIED` or `REJECTED` only (not `PENDING`)
+- [x] `listTechniciansQuery` — add an optional `verificationStatus` filter.
       Copy `listUsersQuery`.
 
 **`technicians.service.ts`**
 
-- [ ] `listTechnicians(query)` — one page + total, `include: { user, category }`.
+- [x] `listTechnicians(query)` — one page + total, `include: { user, category }`.
       Copy `listUsers`.
-- [ ] `setVerificationStatus(profileId, data)` — **one `prisma.$transaction`**:
+- [x] `setVerificationStatus(profileId, data)` — **one `prisma.$transaction`**:
       - `VERIFIED` → profile VERIFIED **and** `user.status = "ACTIVE"`.
         Both, or the technician is stuck waiting forever.
       - `REJECTED` → profile REJECTED, user stays `PENDING` so they can resubmit.
 
 **`technicians.mapper.ts`**
 
-- [ ] `toTechnicianProfileAdminResponse(profile)` — the same fields **plus**
+- [x] `toTechnicianProfileAdminResponse(profile)` — the same fields **plus**
       `nationalId` and `criminalRecordFile`. Two functions, not one with a flag.
 
 **`technicians.admin.routes.ts`**
 
-- [ ] `GET /` → `{ data, meta }`
-- [ ] `PATCH /:id/verification` → 200
+- [x] `GET /` → `{ data, meta }`
+- [x] `PATCH /:id/verification` → 200
 
 ### Test it
 

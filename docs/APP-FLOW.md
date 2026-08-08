@@ -221,6 +221,7 @@ get back.
 
 ```http
 POST /public/uploads          multipart/form-data, field name "file"
+Authorization: Bearer <accessToken>
 ```
 
 ```jsonc
@@ -229,6 +230,11 @@ POST /public/uploads          multipart/form-data, field name "file"
 ```
 
 jpeg / png / pdf, max 5 MB. Call it once per file.
+
+**It needs a token even though it lives under `/public`** — it is the one
+endpoint there that writes to disk. Everyone who uploads has one by this point,
+so nothing changes for the app except the header. Sending no file at all is a
+`400`, not an empty `201`.
 
 ```http
 POST /technician/profile
@@ -489,6 +495,7 @@ photo first, then create the request with the URL you got back.
 
 ```http
 POST /public/uploads          multipart/form-data, field "file"
+Authorization: Bearer <accessToken>
 → { "data": { "url": "/uploads/1712-sink.jpg" } }
 ```
 
@@ -916,25 +923,20 @@ GET   /public/categories            screen 3, and "pick a service"
 GET   /me
 PATCH /me/role
 POST  /customer/profile             screen 5a
-POST  /technician/profile           screen 5b (the upload it feeds on is not)
+POST  /technician/profile           screen 5b
+POST  /public/uploads               screen 5b, and every photo below
 POST  /me/signup                    screens 4 + 5 in one call, files included
+GET   /admin/technicians            back-office approval queue
+PATCH /admin/technicians/:id/verification
       + the whole /admin/users and /admin/categories sections
 ```
 
-**If you are wiring up technician signup today, use `POST /me/signup`.** It is
-the only path that works end to end right now: it takes the files themselves,
-so it does not depend on `POST /public/uploads`, which is still scaffolded.
+**Signup works end to end**, both ways through it: screen by screen, or
+`POST /me/signup` in one call. `POST /public/uploads` is live too, so the app
+can upload a photo and hold the URL — note it now needs a token, even though it
+sits under `/public`.
 
-Scaffolded — the URL exists and answers `501 not_implemented`, so you can wire
-the app up against it now:
-
-```
-POST  /public/uploads               screen 5b, and every photo below
-GET   /admin/technicians            back-office approval queue
-PATCH /admin/technicians/:id/verification
-```
-
-**The whole second half of this document is scaffolded too.** Every URL below
+**The whole second half of this document is scaffolded.** Every URL below
 is mounted and answers `501 not_implemented` today, so you can wire the screens
 up, see the request leave the phone, and swap in the real handling as each task
 lands. The task number is which one fills it in:
