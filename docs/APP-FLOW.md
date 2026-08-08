@@ -391,7 +391,7 @@ If a new state appears later, this table is the only thing that changes.
 
 ```jsonc
 { "error": { "code": "validation_error", "message": "…",
-             "details": [ { "field": "phone", "message": "phone must be 7-20 digits…" } ] } }
+             "details": [ { "field": "phone", "message": "رقم التليفون لازم يكون…" } ] } }
 ```
 
 | Status | Meaning |

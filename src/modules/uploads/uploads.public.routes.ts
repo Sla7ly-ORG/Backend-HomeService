@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ApiError } from "../../core/errors.js";
+import { messages } from "../../core/messages.js";
 import { publicUrlFor, upload } from "./uploads.storage.js";
 
 /**
@@ -29,7 +30,7 @@ uploadsPublicRoutes.post(
     // upload.single leaves req.file undefined when no file was sent - the
     // filter never runs in that case, so nothing rejects it on its own.
     if (!req.file) {
-      throw ApiError.badRequest("لازم ترفع ملف");
+      throw ApiError.badRequest(messages.uploads.fileRequired);
     }
 
     res.status(201).json({ data: { url: publicUrlFor(req.file) } });

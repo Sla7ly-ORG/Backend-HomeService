@@ -18,7 +18,6 @@ export const authPublicRoutes = Router();
 
 /** POST /api/v1/public/auth/request-otp */
 authPublicRoutes.post("/request-otp", async (req, res) => {
-  console.log("ROUTE HIT");
   const { phone } = requestOtpBody.parse(req.body);
   const result = await authService.requestOtp(phone);
 

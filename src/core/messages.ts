@@ -246,11 +246,14 @@ export const messages = {
       `${fieldLabel(field)} مش ملف الخدمة دي بتقبله`,
     tooManyFiles: "ملفات كتير أوي في طلب واحد",
     tooManyParts: "أجزاء كتير أوي في الفورم",
+    /** The request carried no file at all, so multer's filter never ran. */
+    fileRequired: "لازم ترفع ملف",
   },
 
   /** Rules written on a single field, in the schema that declares it. */
   fields: {
-    phone: "رقم التليفون لازم يكون من 7 لـ 20 رقم، وممكن يبدأ بعلامة +",
+    phone:
+      "رقم التليفون لازم يكون رقم موبايل مصري بالصيغة الدولية، زي +201012345678",
     id: "الرقم التعريفي لازم يكون رقم صحيح موجب",
     otpCode: "كود التأكيد لازم يكون 6 أرقام",
     atLeastOneFieldToUpdate: "ابعت حقل واحد على الأقل عشان نعدّله",
