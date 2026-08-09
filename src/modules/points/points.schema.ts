@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { idParams } from "../../core/fields.js";
 import { paginationQuery } from "../../core/pagination.js";
+import { PointsTransactionType } from "../../generated/prisma/enums.js";
 
 // TASK 6 - the points wallet. See docs/INTERN-TASKS.md, "Task 6".
 //
@@ -22,7 +23,9 @@ export const pointsUserIdParams = idParams;
  * added the model and run the migration. Copy listUsersQuery in
  * users.schema.ts for the shape.
  */
-export const listPointsQuery = paginationQuery;
+export const listPointsQuery = paginationQuery.extend({
+  type: z.enum(PointsTransactionType).optional(),
+});
 
 /**
  * POST /api/v1/admin/users/:id/points - support, and how you give yourself
@@ -35,7 +38,10 @@ export const listPointsQuery = paginationQuery;
  * `pointsUserIdParams` above. An admin endpoint that took both would let the
  * two disagree.
  */
-export const grantPointsBody = z.object({});
+export const grantPointsBody = z.object({
+  amount: z.coerce.number().int().min(1).max(100000),
+  reason: z.string().trim().max(255).optional(),
+});
 
 export type ListPointsQuery = z.infer<typeof listPointsQuery>;
 export type GrantPointsBody = z.infer<typeof grantPointsBody>;

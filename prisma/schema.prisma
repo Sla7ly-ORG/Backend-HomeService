@@ -62,6 +62,13 @@ enum OfferStatus {
   NOT_SELECTED
 }
 
+enum PointsTransactionType {
+  TOPUP
+  SPEND
+  REFUND
+  ADMIN_GRANT
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -89,6 +96,8 @@ model User {
   longitude  Decimal?   @db.Decimal(11, 8)
   status     UserStatus @default(PENDING)
 
+  pointsBalance Int @default(0) @map("points_balance") 
+
   createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt  DateTime?  @map("deleted_at") @db.Timestamptz(6)
@@ -102,6 +111,7 @@ model User {
   requestsAsCustomer   ServiceRequest[] @relation("RequestCustomer")
   requestsAsTechnician ServiceRequest[] @relation("RequestTechnician")
 
+  pointsTransactions PointsTransaction[]
   technicianOffers TechnicianOffer[]
 
   customerReviewsWritten CustomerReview[] @relation("CustomerReviewAuthor")
@@ -109,6 +119,7 @@ model User {
 
   technicianReviewsWritten TechnicianReview[] @relation("TechnicianReviewAuthor")
   technicianReviewsReceived TechnicianReview[] @relation("TechnicianReviewSubject")
+
 
   @@index([role])
   @@index([status])
@@ -231,6 +242,7 @@ model ServiceRequest {
   attachments      RequestAttachment[]
   aiEstimation     AiEstimation?
   offers           TechnicianOffer[]
+  pointsTransactions PointsTransaction[]
   customerReview   CustomerReview?
   technicianReview TechnicianReview?
 
@@ -345,4 +357,25 @@ model TechnicianReview {
   @@index([technicianId])
   @@index([customerId])
   @@map("technician_reviews")
+}
+
+// ---------------------------------------------------------------------------
+// 12. points_transactions 
+// ---------------------------------------------------------------------------
+
+model PointsTransaction {
+  id               BigInt                 @id @default(autoincrement())
+  userId           BigInt                 @map("user_id")
+  type             PointsTransactionType
+  amount           Int
+  balanceAfter     Int                    @map("balance_after")
+  reason           String?                @db.VarChar(255)
+  serviceRequestId BigInt?                @map("service_request_id")
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@map("points_transactions")
 }

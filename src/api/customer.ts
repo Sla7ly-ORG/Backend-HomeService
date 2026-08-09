@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { usersCustomerRoutes } from "../modules/users/users.customer.routes.js";
-import { pointsCustomerRoutes } from "../modules/points/points.customer.routes.js";
 import { requestsCustomerRoutes } from "../modules/requests/requests.customer.routes.js";
+import { pointsCustomerRoutes } from "../modules/points/points.customer.routes.js";
 
 /**
  * Customer-facing endpoints, under /api/v1/customer.

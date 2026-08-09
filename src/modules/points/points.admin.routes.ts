@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { ApiError } from "../../core/errors.js";
+import { grantPointsBody, pointsUserIdParams } from "./points.schema.js";
+import { prisma } from "../../core/prisma.js";
+import * as pointsService from "./points.service.js";
 
 /**
  * TASK 6 - granting points, mounted at /api/v1/admin/users.
@@ -15,15 +17,16 @@ import { ApiError } from "../../core/errors.js";
 export const pointsAdminRoutes = Router();
 
 /** POST /api/v1/admin/users/:id/points */
-pointsAdminRoutes.post("/:id/points", async (_req, res) => {
-  // TODO(task 6): parse pointsUserIdParams + grantPointsBody, then run
-  // creditPoints in a `prisma.$transaction` with type "ADMIN_GRANT" and reply
-  // 201 with the new balance:
-  //
-  //   res.status(201).json({ data: { pointsBalance } });
-  //
-  // creditPoints takes a transaction client, so it needs one even when it is
-  // the only write in it. That is deliberate: the signature is what stops
-  // somebody calling it outside a transaction later, when it is not.
-  throw ApiError.notImplemented();
+pointsAdminRoutes.post("/:id/points", async (req, res) => {
+  const { id } = pointsUserIdParams.parse(req.params);
+  const { amount, reason } = grantPointsBody.parse(req.body);
+
+  const pointsBalance = await prisma.$transaction((tx) =>
+    pointsService.creditPoints(tx, id, amount, {
+      type: "ADMIN_GRANT",
+      reason,
+    }),
+  );
+
+  res.status(201).json({ data: { pointsBalance } });
 });

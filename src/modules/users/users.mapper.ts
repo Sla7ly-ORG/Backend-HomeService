@@ -27,6 +27,7 @@ export function toUserResponse(user: User) {
     longitude: user.longitude?.toNumber() ?? null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
+    pointsBalance: user.pointsBalance,
   };
 }
 

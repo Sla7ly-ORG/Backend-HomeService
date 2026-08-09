@@ -1,26 +1,4 @@
-import { ApiError } from "../../core/errors.js";
-
-// TASK 6. Reference: src/modules/users/users.mapper.ts.
-
-/**
- * TODO(task 6): delete this and import the generated row type instead, once the
- * model has been added and migrated:
- *
- *   import type { PointsTransaction } from "../../generated/prisma/client.js";
- *
- * It is written out here so the shape you are migrating towards is visible
- * while you write it.
- */
-export type PointsTransactionRow = {
-  id: bigint;
-  userId: bigint;
-  type: string;
-  amount: number;
-  balanceAfter: number;
-  reason: string | null;
-  serviceRequestId: bigint | null;
-  createdAt: Date;
-};
+import type { PointsTransaction } from "../../generated/prisma/client.js";
 
 /**
  * TASK 6 - one row of the history screen.
@@ -34,7 +12,19 @@ export type PointsTransactionRow = {
  * Say that in a comment when you write it. It is the one exception in the
  * codebase and the next person will assume it is a bug.
  */
-export function toPointsTransactionResponse(row: PointsTransactionRow) {
-  // TODO(task 6)
-  throw ApiError.notImplemented();
+export function toPointsTransactionResponse(row: PointsTransaction) {
+  return {
+    id: row.id.toString(),
+    userId: row.userId.toString(),
+    type: row.type,
+    amount: row.amount,
+    balanceAfter: row.balanceAfter,
+    reason: row.reason,
+    serviceRequestId: row.serviceRequestId?.toString() ?? null,
+    createdAt: row.createdAt,
+  };
 }
+
+export type PointsTransactionResponse = ReturnType<
+  typeof toPointsTransactionResponse
+>;

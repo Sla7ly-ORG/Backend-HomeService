@@ -275,13 +275,15 @@ export const messages = {
    */
   accountState: {
     completeProfile: "من فضلك كمّل بياناتك",
-    submitDocuments:
-      "اكتب رقمك القومي وارفع الفيش والتشبيه عشان تخلّص التسجيل",
+    submitDocuments: "اكتب رقمك القومي وارفع الفيش والتشبيه عشان تخلّص التسجيل",
     waitingForApproval:
       "مستنداتك تحت المراجعة. هنبعتلك إشعار أول ما الأدمن يوافق على حسابك.",
     verificationRejected: "مستنداتك اترفضت. من فضلك ارفعها تاني.",
     ready: "حسابك جاهز",
     blocked: "الحساب ده محظور",
     suspended: "الحساب ده موقوف",
+  },
+  points: {
+    notEnough: "رصيد النقط مش كفاية",
   },
 };

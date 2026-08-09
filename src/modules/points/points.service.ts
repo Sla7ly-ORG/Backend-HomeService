@@ -1,5 +1,10 @@
-import type { Prisma } from "../../generated/prisma/client.js";
 import { ApiError } from "../../core/errors.js";
+import { messages } from "../../core/messages.js";
+import { skipTake } from "../../core/pagination.js";
+import { prisma } from "../../core/prisma.js";
+import { Prisma } from "../../generated/prisma/client.js";
+import type { PointsTransactionType } from "../../generated/prisma/enums.js";
+
 import type { ListPointsQuery } from "./points.schema.js";
 
 /**
@@ -11,15 +16,6 @@ import type { ListPointsQuery } from "./points.schema.js";
  * A balance with no history cannot be audited; a history with no balance costs
  * a SUM on every request.
  */
-
-/**
- * TODO(task 6): delete this and import the generated enum instead, once the
- * model in the task description has been added and migrated:
- *
- *   import type { PointsTransactionType } from "../../generated/prisma/enums.js";
- */
-export type PointsTransactionType = "TOPUP" | "SPEND" | "REFUND" | "ADMIN_GRANT";
-
 /**
  * TASK 6 - the number on the profile screen.
  *
@@ -27,8 +23,16 @@ export type PointsTransactionType = "TOPUP" | "SPEND" | "REFUND" | "ADMIN_GRANT"
  * gone or soft-deleted - `deletedAt: null`, like every other read of users.
  */
 export async function getPointsBalance(userId: bigint) {
-  // TODO(task 6): returns Promise<number>
-  throw ApiError.notImplemented();
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { pointsBalance: true },
+  });
+
+  if (!user) {
+    throw ApiError.notFound(messages.users.notFound);
+  }
+
+  return user.pointsBalance;
 }
 
 /**
@@ -42,8 +46,21 @@ export async function listPointsTransactions(
   userId: bigint,
   query: ListPointsQuery,
 ) {
-  // TODO(task 6)
-  throw ApiError.notImplemented();
+  const where: Prisma.PointsTransactionWhereInput = {
+    userId,
+    ...(query.type ? { type: query.type } : {}),
+  };
+
+  const [transactions, total] = await Promise.all([
+    prisma.pointsTransaction.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      ...skipTake(query),
+    }),
+    prisma.pointsTransaction.count({ where }),
+  ]);
+
+  return { transactions, total };
 }
 
 /**
@@ -74,11 +91,32 @@ export async function spendPoints(
   amount: number,
   meta: { reason?: string; serviceRequestId?: bigint },
 ) {
-  // TODO(task 6): returns Promise<number> - the balance after the spend.
-  // `ApiError.paymentRequired()` (402, code `insufficient_points`) and the
-  // `messages.points` block are part of this task too - see core/errors.ts and
-  // core/messages.ts.
-  throw ApiError.notImplemented();
+  const { count } = await tx.user.updateMany({
+    where: { id: userId, deletedAt: null, pointsBalance: { gte: amount } },
+    data: { pointsBalance: { decrement: amount } },
+  });
+
+  if (count === 0) {
+    throw ApiError.paymentRequired(messages.points.notEnough);
+  }
+
+  const user = await tx.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { pointsBalance: true },
+  });
+
+  await tx.pointsTransaction.create({
+    data: {
+      userId,
+      type: "SPEND",
+      amount: -amount,
+      balanceAfter: user.pointsBalance,
+      reason: meta.reason,
+      serviceRequestId: meta.serviceRequestId,
+    },
+  });
+
+  return user.pointsBalance;
 }
 
 /**
@@ -95,6 +133,21 @@ export async function creditPoints(
   amount: number,
   meta: { type: PointsTransactionType; reason?: string },
 ) {
-  // TODO(task 6): returns Promise<number> - the balance after the credit.
-  throw ApiError.notImplemented();
+  const user = await tx.user.update({
+    where: { id: userId },
+    data: { pointsBalance: { increment: amount } },
+    select: { pointsBalance: true },
+  });
+
+  await tx.pointsTransaction.create({
+    data: {
+      userId,
+      type: meta.type,
+      amount,
+      balanceAfter: user.pointsBalance,
+      reason: meta.reason,
+    },
+  });
+
+  return user.pointsBalance;
 }

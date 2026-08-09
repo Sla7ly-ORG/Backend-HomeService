@@ -18,7 +18,12 @@ export class ApiError extends Error {
   readonly code: string;
   readonly details?: unknown;
 
-  constructor(status: number, code: string, message: string, details?: unknown) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: unknown,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -44,6 +49,10 @@ export class ApiError extends Error {
 
   static conflict(message = messages.generic.conflict, details?: unknown) {
     return new ApiError(409, "conflict", message, details);
+  }
+
+  static paymentRequired(message = messages.points.notEnough) {
+    return new ApiError(402, "insufficient_points", message);
   }
 
   /**
