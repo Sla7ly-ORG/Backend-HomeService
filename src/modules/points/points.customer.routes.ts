@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { ApiError } from "../../core/errors.js";
+import * as pointsService from "./points.service.js";
+import { currentUser } from "../auth/auth.middleware.js";
+import { listPointsQuery } from "./points.schema.js";
+import { toPointsTransactionResponse } from "./points.mapper.js";
+import { paginationMeta } from "../../core/pagination.js";
 
 /**
  * TASK 6 - the customer's own wallet, mounted at /api/v1/customer/points.
@@ -11,19 +15,24 @@ import { ApiError } from "../../core/errors.js";
 export const pointsCustomerRoutes = Router();
 
 /** GET /api/v1/customer/points */
-pointsCustomerRoutes.get("/", async (_req, res) => {
-  // TODO(task 6): getPointsBalance(currentUser(req).id), then
-  //   res.json({ data: { pointsBalance } });
-  //
-  // No mapper for a single integer, and no `meta` - it is not a list.
-  throw ApiError.notImplemented();
+pointsCustomerRoutes.get("/", async (req, res) => {
+  const pointsBalance = await pointsService.getPointsBalance(
+    currentUser(req).id,
+  );
+
+  res.json({ data: { pointsBalance } });
 });
 
 /** GET /api/v1/customer/points/transactions - paginated history. */
-pointsCustomerRoutes.get("/transactions", async (_req, res) => {
-  // TODO(task 6): parse listPointsQuery, call listPointsTransactions, then
-  //   res.json({ data: transactions.map(toPointsTransactionResponse),
-  //              meta: paginationMeta(query, total) });
-  // Copy the list handler in users.admin.routes.ts.
-  throw ApiError.notImplemented();
+pointsCustomerRoutes.get("/transactions", async (req, res) => {
+  const query = listPointsQuery.parse(req.query);
+  const { transactions, total } = await pointsService.listPointsTransactions(
+    currentUser(req).id,
+    query,
+  );
+
+  res.json({
+    data: transactions.map(toPointsTransactionResponse),
+    meta: paginationMeta(query, total),
+  });
 });

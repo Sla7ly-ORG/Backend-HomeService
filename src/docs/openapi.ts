@@ -16,6 +16,10 @@ import {
 } from "../modules/users/users.schema.js";
 import { createTechnicianProfileBody } from "../modules/technicians/technicians.schema.js";
 import {
+  grantPointsBody,
+  listPointsQuery,
+} from "../modules/points/points.schema.js";
+import {
   dataOf,
   fromZod,
   idPathParam,
@@ -639,6 +643,60 @@ export const openApiDocument = {
     },
 
     // -----------------------------------------------------------------------
+    // /api/v1/customer/points - task 6, the wallet
+    // -----------------------------------------------------------------------
+    "/api/v1/customer/points": {
+      get: {
+        tags: ["Customer"],
+        operationId: "getPointsBalance",
+        summary: "My points balance",
+        description: [
+          "The number on the profile screen. `GET /api/v1/me` already carries the same figure as `user.pointsBalance`, so reach for this one on a wallet screen that shows nothing else.",
+          "",
+          "No `meta` here - a balance is not a list.",
+        ].join("\n"),
+        responses: {
+          200: jsonResponse(
+            "The current balance.",
+            dataOf(object({ pointsBalance: { type: "integer", example: 250 } })),
+          ),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
+    "/api/v1/customer/points/transactions": {
+      get: {
+        tags: ["Customer"],
+        operationId: "listPointsTransactions",
+        summary: "My points history",
+        description: [
+          'Where the points went, newest first. Filter with `type=SPEND` to answer "what did I spend them on".',
+          "",
+          "`amount` is signed, so a spend arrives as a negative number and `balanceAfter` is the balance once it had been applied.",
+        ].join("\n"),
+        parameters: [
+          ...queryParams(listPointsQuery, {
+            page: "1-based page number.",
+            limit: "Rows per page, at most 100.",
+            type: "Show only one kind of ledger row.",
+          }),
+        ],
+        responses: {
+          200: jsonResponse(
+            "One page of ledger rows.",
+            listOf(schemaRef("PointsTransaction")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
     // /api/v1/technician
     // -----------------------------------------------------------------------
     "/api/v1/technician/profile": {
@@ -798,6 +856,35 @@ export const openApiDocument = {
     // -----------------------------------------------------------------------
     // /api/v1/admin/categories - task 1
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // /api/v1/admin/users/{id}/points - task 6, granting points
+    // -----------------------------------------------------------------------
+    "/api/v1/admin/users/{id}/points": {
+      parameters: [idPathParam("The user whose wallet is credited.")],
+
+      post: {
+        tags: ["Admin \u00b7 Users"],
+        operationId: "grantPoints",
+        summary: "Grant points to a user",
+        description: [
+          "Support, and how you give an account points to test with before card top-ups exist. Writes an `ADMIN_GRANT` row to the ledger next to the new balance.",
+          "",
+          "There is no `userId` in the body: it is the `:id` in the path, and an endpoint that took both would let the two disagree.",
+        ].join("\n"),
+        requestBody: jsonBody(fromZod(grantPointsBody)),
+        responses: {
+          201: jsonResponse(
+            "Points granted.",
+            dataOf(object({ pointsBalance: { type: "integer", example: 350 } })),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
     "/api/v1/admin/categories": {
       post: {
         tags: ["Admin · Categories"],

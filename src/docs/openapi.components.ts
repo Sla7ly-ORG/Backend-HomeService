@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  PointsTransactionType,
   UserRole,
   UserStatus,
   VerificationStatus,
@@ -224,6 +225,12 @@ export const schemas: Record<string, JsonSchema> = {
       address: nullable({ type: "string", example: "12 Nile St" }),
       latitude: nullable({ type: "number", example: 30.0131 }),
       longitude: nullable({ type: "number", example: 31.2089 }),
+      pointsBalance: {
+        type: "integer",
+        description:
+          "Task 6. The wallet balance, so the profile screen does not need a second call. A plain integer - points are counted, not paid.",
+        example: 250,
+      },
       createdAt: timestamp("When the account was created."),
       updatedAt: timestamp("When the row last changed."),
     },
@@ -237,8 +244,51 @@ export const schemas: Record<string, JsonSchema> = {
       "address",
       "latitude",
       "longitude",
+      "pointsBalance",
       "createdAt",
       "updatedAt",
+    ],
+  },
+
+  /** Task 6. Mirrors `toPointsTransactionResponse` in points.mapper.ts. */
+  PointsTransaction: {
+    type: "object",
+    description:
+      'One row of the points ledger. `amount` and `balanceAfter` are plain integers rather than strings: points are counted, not paid, so the "money is a string" rule the rest of this document follows deliberately does not apply here.',
+    properties: {
+      id: bigIntId("7", "Ledger row id."),
+      userId: bigIntId("2", "The wallet this row belongs to."),
+      type: {
+        type: "string",
+        enum: Object.values(PointsTransactionType),
+        description:
+          "`TOPUP` bought with money, `SPEND` an AI estimation, `REFUND` we failed, `ADMIN_GRANT` support.",
+      },
+      amount: {
+        type: "integer",
+        description: "Signed: `+100` for a grant, `-50` for a spend.",
+        example: 100,
+      },
+      balanceAfter: {
+        type: "integer",
+        description: "The balance once this row had been applied.",
+        example: 100,
+      },
+      reason: nullable({ type: "string", example: "testing" }),
+      serviceRequestId: nullable(
+        bigIntId("12", "The request this paid for, when there was one."),
+      ),
+      createdAt: timestamp("When the row was written."),
+    },
+    required: [
+      "id",
+      "userId",
+      "type",
+      "amount",
+      "balanceAfter",
+      "reason",
+      "serviceRequestId",
+      "createdAt",
     ],
   },
 
