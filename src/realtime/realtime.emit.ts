@@ -1,5 +1,14 @@
 import type { RequestStatus } from "../generated/prisma/enums.js";
-import { events, roomFor, type JobClosedReason } from "./realtime.events.js";
+import {
+  events,
+  roomFor,
+  type JobClosedPayload,
+  type JobClosedReason,
+  type JobSelectedPayload,
+  type OfferNewPayload,
+  type RequestUpdatedPayload,
+} from "./realtime.events.js";
+import { getIo } from "./realtime.server.js";
 
 /**
  * TASK 9 - the only file tasks 10 and 11 import.
@@ -24,24 +33,39 @@ import { events, roomFor, type JobClosedReason } from "./realtime.events.js";
 /** So a missing server logs once, not once per publish. */
 const warned = new Set<string>();
 
-function safeEmit(_room: string, event: string, _payload: unknown) {
-  // TODO(task 9): once createRealtime is written, this becomes:
-  //
-  //   const io = getIo();
-  //   if (!io) { warnOnce(event); return; }
-  //   try { io.to(room).emit(event, payload); } catch (err) { console.error(...); }
-  //
-  // Keep the try/catch. See the note above about never throwing.
-  if (!warned.has(event)) {
-    warned.add(event);
-    console.warn(`[realtime] ${event} dropped - the socket server is not built yet (task 9)`);
+function safeEmit(room: string, event: string, payload: unknown) {
+  const io = getIo();
+
+  // No server: a script, a seed, a test. Not a failure - the caller's write has
+  // already committed and the screens will catch up on their next REST fetch,
+  // which is what docs/APP-FLOW.md tells every screen to do on open anyway.
+  if (!io) {
+    if (!warned.has(event)) {
+      warned.add(event);
+      console.warn(`[realtime] ${event} dropped - no socket server in this process`);
+    }
+
+    return;
+  }
+
+  try {
+    io.to(room).emit(event, payload);
+  } catch (err) {
+    // Deliberately swallowed. See the header: by the time this runs the
+    // transaction is committed, and a socket fault must not rewrite a 200
+    // into a 500 for something the caller already got.
+    console.error(`[realtime] ${event} failed`, err);
   }
 }
 
-/** -> technician: a new job in their area and field. One card each. */
+/**
+ * -> technician: a new job in their area and field. One card each.
+ *
+ * One emit per technician rather than one to a shared room: `distanceKm` is
+ * different for every recipient, so task 10 maps a card per id and this loop
+ * delivers each to its own person.
+ */
 export function emitJobNew(technicianIds: bigint[], job: unknown): void {
-  // TODO(task 9): one emit per technician - `distanceKm` differs per recipient,
-  // so the caller maps a card per id rather than sharing one object.
   for (const id of technicianIds) safeEmit(roomFor(id), events.jobNew, job);
 }
 
@@ -51,9 +75,15 @@ export function emitJobClosed(
   requestId: bigint,
   reason: JobClosedReason,
 ): void {
-  // TODO(task 9): payload { requestId: requestId.toString(), reason }
-  //   - the JobClosedPayload type in realtime.events.ts
-  for (const id of technicianIds) safeEmit(roomFor(id), events.jobClosed, null);
+  const payload: JobClosedPayload = {
+    // Ids are strings on the wire, exactly as they are in every HTTP response.
+    // `core/serialize.ts` taught `JSON.stringify` about BigInt, but Socket.IO
+    // does not use it - so the conversion happens here.
+    requestId: requestId.toString(),
+    reason,
+  };
+
+  for (const id of technicianIds) safeEmit(roomFor(id), events.jobClosed, payload);
 }
 
 /** -> technician: they were chosen, and can now read the address and phone. */
@@ -62,8 +92,12 @@ export function emitJobSelected(
   requestId: bigint,
   offerId: bigint,
 ): void {
-  // TODO(task 9): payload { requestId, offerId }, both `.toString()`
-  safeEmit(roomFor(technicianId), events.jobSelected, null);
+  const payload: JobSelectedPayload = {
+    requestId: requestId.toString(),
+    offerId: offerId.toString(),
+  };
+
+  safeEmit(roomFor(technicianId), events.jobSelected, payload);
 }
 
 /** -> customer: a technician sent a fee. */
@@ -72,8 +106,12 @@ export function emitOfferNew(
   requestId: bigint,
   offer: unknown,
 ): void {
-  // TODO(task 9): payload { requestId: requestId.toString(), offer }
-  safeEmit(roomFor(customerId), events.offerNew, offer);
+  const payload: OfferNewPayload = {
+    requestId: requestId.toString(),
+    offer,
+  };
+
+  safeEmit(roomFor(customerId), events.offerNew, payload);
 }
 
 /** -> customer: the request moved on. */
@@ -82,6 +120,10 @@ export function emitRequestUpdated(
   requestId: bigint,
   status: RequestStatus,
 ): void {
-  // TODO(task 9): payload { requestId: requestId.toString(), status }
-  safeEmit(roomFor(customerId), events.requestUpdated, null);
+  const payload: RequestUpdatedPayload = {
+    requestId: requestId.toString(),
+    status,
+  };
+
+  safeEmit(roomFor(customerId), events.requestUpdated, payload);
 }

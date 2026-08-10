@@ -904,7 +904,7 @@ curl -X POST localhost:3000/api/v1/customer/requests/1/ai-estimation \
 
 ---
 
-# Task 9 — The live channel (Socket.IO)
+# Task 9 — The live channel (Socket.IO) ✅ done
 
 A technician's feed fills up while they are staring at it, and a customer
 watches fees arrive without pulling to refresh. This task is the channel that
@@ -932,14 +932,14 @@ second code path.
 
 **`src/core/env.ts`**
 
-- [ ] `SOCKET_CORS_ORIGIN` — comma-separated origins, default `*`. A native app
+- [x] `SOCKET_CORS_ORIGIN` — comma-separated origins, default `*`. A native app
       does not send an `Origin`, so this changes nothing for the phone; a browser
       dashboard on another host would be refused at the handshake without it,
       because that handshake is an ordinary HTTP request before it is a socket.
 
 **`src/realtime/realtime.auth.ts`**
 
-- [ ] The handshake guard, reusing the HTTP guard's own pieces — `verifyToken`,
+- [x] The handshake guard, reusing the HTTP guard's own pieces — `verifyToken`,
       `findUserById`, `assertAccountIsUsable`. One auth story for both channels:
 
       ```ts
@@ -965,7 +965,7 @@ second code path.
 
 **`src/realtime/realtime.server.ts`**
 
-- [ ] `createRealtime(httpServer)` — build the `Server`, install the guard, and
+- [x] `createRealtime(httpServer)` — build the `Server`, install the guard, and
       on `connection` put the socket in `roomFor(user.id)`. Nothing else: no
       `socket.on(...)` handlers for client events, on purpose. Keep the instance
       in a module-level variable behind `getIo()`.
@@ -986,7 +986,7 @@ second code path.
 
 **`src/realtime/realtime.emit.ts`** — the only file tasks 10 and 11 import.
 
-- [ ] Five functions, all taking ids and an already-mapped payload:
+- [x] Five functions, all taking ids and an already-mapped payload:
 
       ```ts
       emitJobNew(technicianIds: bigint[], job: unknown): void
@@ -1008,7 +1008,7 @@ second code path.
 
 **`src/index.ts`**
 
-- [ ] Uncomment the `createRealtime(server)` line. It is commented out today
+- [x] Uncomment the `createRealtime(server)` line. It is commented out today
       because the function throws, and a throw there takes the whole API down
       at startup rather than degrading to "no socket". `closeRealtime()` is
       already called from `shutdown()`.
@@ -1018,7 +1018,7 @@ second code path.
 
 **`src/realtime/realtime.admin.routes.ts`** — a way to test this today
 
-- [ ] `POST /admin/realtime/ping` → 200, body `{ userId, message }`, emits
+- [x] `POST /admin/realtime/ping` → 200, body `{ userId, message }`, emits
       `debug:ping` to that user's room. Tasks 10 and 11 are the real emitters,
       but they are days away and a channel you cannot see is a channel you
       cannot debug. Admin-guarded, so it can stay.

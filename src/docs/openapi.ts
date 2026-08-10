@@ -38,6 +38,7 @@ import {
   type JsonSchema,
 } from "./openapi.components.js";
 import { createCategoryBody, updateCategoryBody } from "../modules/categories/categories.schema.js";
+import { pingBody } from "../realtime/realtime.schema.js";
 
 /**
  * The OpenAPI 3.1 description of this API, served as a Swagger page at `/docs`
@@ -235,6 +236,36 @@ export const openApiDocument = {
       "```",
       "",
       "🔨 marks an endpoint that is scaffolded but not implemented yet - it answers `501` today.",
+      "",
+      "### Live updates (Socket.IO)",
+      "",
+      "A technician's feed fills up while they are looking at it, and a customer watches fees arrive without pulling to refresh. That runs over a socket on **this same host and port** - there is no second URL and no second port to open.",
+      "",
+      "```js",
+      'const socket = io("https://this-host", { auth: { token: accessToken } });',
+      "```",
+      "",
+      "The token is the same `accessToken` as above, and it goes in `auth`, never in a query string. The handshake runs the same three checks `requireAuth` does - signature, the user row, blocked/suspended - so a token that opens a socket is exactly a token that opens an endpoint.",
+      "",
+      "**Every rejection is the single string `unauthorized`**, whether the token was missing, malformed, expired, the wrong kind, or the account was deleted or blocked. Your reaction is the same in all of those cases: refresh, then reconnect. Anything more specific would only help someone probing.",
+      "",
+      "| Event | To | Payload |",
+      "| --- | --- | --- |",
+      "| `job:new` | technician | one card of `GET /api/v1/technician/jobs` |",
+      "| `job:closed` | technician | `{ requestId, reason }` - `TAKEN` / `CANCELLED` / `FULL` |",
+      "| `job:selected` | technician | `{ requestId, offerId }` |",
+      "| `offer:new` | customer | `{ requestId, offer }` - one card of `GET /api/v1/customer/requests/{id}/offers` |",
+      "| `request:updated` | customer | `{ requestId, status }` |",
+      "",
+      "The payload shapes are under **Schemas** at the bottom of this page (`JobClosedEvent` and friends). Two things about them are worth stating plainly: ids are **strings**, exactly as they are in every HTTP response here; and the card payloads come out of the very same mapper as the REST endpoint next to them, so one screen renders a list item and an event with one code path.",
+      "",
+      "**The socket never receives anything.** There is no message you can send it - every write stays an HTTP call, where the guards, the validation and the rollback already live. It is a delivery channel, not a second API.",
+      "",
+      "Three things it does not promise:",
+      "",
+      "- **Delivery.** An event emitted while the phone is in a tunnel is gone. Fetch over REST on open and on reconnect, and never assume the server knows you received something.",
+      "- **A long life.** The connection is closed once the access token that opened it would have expired, because a socket is only authenticated once. Reconnect with a fresh token on `connect_error`; this is normal, not a fault.",
+      "- **Push.** A closed app has no socket.",
     ].join("\n"),
   },
 
@@ -259,6 +290,11 @@ export const openApiDocument = {
     {
       name: "Admin · Technicians",
       description: "The approval queue for technician documents.",
+    },
+    {
+      name: "Admin · Realtime",
+      description:
+        "Poking the socket channel by hand. See **Live updates** above for the channel itself.",
     },
   ],
 
@@ -1042,6 +1078,54 @@ export const openApiDocument = {
           403: responseRef("Forbidden"),
           404: responseRef("NotFound"),
           501: responseRef("NotImplemented"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/admin/realtime - task 9, seeing the socket work
+    // -----------------------------------------------------------------------
+    "/api/v1/admin/realtime/ping": {
+      post: {
+        tags: ["Admin · Realtime"],
+        operationId: "realtimePing",
+        summary: "Send a debug event to a user's socket",
+        description: [
+          "Emits `debug:ping` to one user's room, so the channel can be watched before tasks 10 and 11 emit anything real. A channel you cannot see is a channel you cannot debug.",
+          "",
+          "Connect as that user and leave it printing:",
+          "",
+          "```bash",
+          'node scripts/socket-test.mjs "$TOKEN"',
+          "```",
+          "",
+          "`debug:ping` is deliberately **not** part of the app's contract - it is not in the event table above, and nothing but this endpoint and that script should know the name.",
+          "",
+          "`delivered` says a socket server existed to emit through, not that anybody was listening. Socket.IO cannot tell us the latter and neither can we: pinging a user with no open socket is a `200` with `delivered: true`.",
+        ].join("\n"),
+        requestBody: jsonBody(
+          withExamples(fromZod(pingBody), {
+            userId: "2",
+            message: "hello",
+          }),
+        ),
+        responses: {
+          200: jsonResponse(
+            "Emitted, or dropped if no socket server is running in this process.",
+            dataOf(
+              object({
+                delivered: {
+                  type: "boolean",
+                  description:
+                    "`false` only when this process has no socket server at all.",
+                  example: true,
+                },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
         },
       },
     },
