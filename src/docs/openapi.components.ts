@@ -2,6 +2,8 @@ import { z } from "zod";
 import {
   PointsTransactionType,
   RequestStatus,
+  RequestType,
+  Severity,
   UserRole,
   UserStatus,
   VerificationStatus,
@@ -363,6 +365,170 @@ export const schemas: Record<string, JsonSchema> = {
     ],
     description:
       "The admin view of a technician profile: everything above plus the account behind it, its category, and the identity documents. Mirrors `toTechnicianProfileAdminResponse` (task 5).",
+  },
+
+  /** Task 7/8. Mirrors `toAiEstimationResponse` in requests.mapper.ts. */
+  AiEstimation: {
+    type: "object",
+    description:
+      "What the AI made of the photo and the title: how bad it is, and what that usually costs in this category.",
+    properties: {
+      id: bigIntId("4", "Estimation id."),
+      severity: {
+        type: "string",
+        enum: Object.values(Severity),
+        description:
+          "Picks which of the category's three price bands applies.",
+      },
+      minPrice: {
+        type: "string",
+        description: "Money is a Decimal in the database and a string here.",
+        example: "180.00",
+      },
+      maxPrice: { type: "string", example: "320.00" },
+      confidence: {
+        type: "string",
+        description:
+          "How sure the model was, 0-100. A Decimal, so a string - it does not survive being turned into a float either.",
+        example: "82.50",
+      },
+      createdAt: timestamp("When the estimate was produced."),
+    },
+    required: [
+      "id",
+      "severity",
+      "minPrice",
+      "maxPrice",
+      "confidence",
+      "createdAt",
+    ],
+  },
+
+  /** Task 7. Mirrors `toServiceRequestResponse` in requests.mapper.ts. */
+  ServiceRequest: {
+    type: "object",
+    description:
+      "One service request, as its own customer sees it. The address fields are a snapshot taken when the request was filed, not a join onto the profile - the customer may move house, and the job happened where it happened.",
+    properties: {
+      id: bigIntId("12", "Request id."),
+      customerId: bigIntId("2", "The customer who filed it - always the caller."),
+      categoryId: bigIntId("1", "The speciality this needs."),
+      categoryName: { type: "string", example: "Plumbing" },
+      requestType: {
+        type: "string",
+        enum: Object.values(RequestType),
+        description:
+          "`AI_ESTIMATION` buys a severity and a price range for points before publishing; `CONSULTATION` goes straight to the technicians.",
+      },
+      title: { type: "string", example: "Kitchen sink is leaking" },
+      description: {
+        type: "string",
+        example:
+          "Water under the sink since yesterday, the pipe joint is wet.",
+      },
+      status: {
+        type: "string",
+        enum: Object.values(RequestStatus),
+        description:
+          "`PENDING` is a **draft** - it has not reached a technician. Publishing moves it to `WAITING_FOR_TECHNICIAN`.",
+      },
+      serviceAddress: { type: "string", example: "12 Nile St, Dokki" },
+      serviceCity: { type: "string", example: "Giza" },
+      serviceLatitude: {
+        type: "number",
+        description:
+          "A map pin rather than an amount, so a number - the same as on `User`.",
+        example: 30.0131,
+      },
+      serviceLongitude: { type: "number", example: 31.2089 },
+      distanceKm: nullable({
+        type: "string",
+        description:
+          "Set once a technician is chosen (task 11). A measurement, so a string.",
+        example: "4.20",
+      }),
+      visitFee: nullable({
+        type: "string",
+        description: "Set once a technician is chosen (task 11).",
+        example: "150.00",
+      }),
+      images: {
+        type: "array",
+        items: { type: "string", example: "/uploads/1712-sink.jpg" },
+        description: "The urls sent when the request was created, in order.",
+      },
+      aiEstimation: nullable(schemaRef("AiEstimation")),
+      technician: nullable(
+        object({
+          id: bigIntId("3", "The chosen technician."),
+          fullName: nullable({ type: "string", example: "Ahmed Samir" }),
+          phone: nullable({
+            type: "string",
+            description:
+              "**Null until `status` reaches `TECHNICIAN_SELECTED`.** Fifty technicians may have seen this job; only the chosen one's number is handed over, and only once the two of them are meant to talk. Null again is never a bug - check the status.",
+            example: "+201000000003",
+          }),
+        }),
+      ),
+      offersCount: {
+        type: "integer",
+        description: "How many technicians have answered so far.",
+        example: 3,
+      },
+      createdAt: timestamp("When the request was filed."),
+      updatedAt: timestamp("When the row last changed."),
+    },
+    required: [
+      "id",
+      "customerId",
+      "categoryId",
+      "categoryName",
+      "requestType",
+      "title",
+      "description",
+      "status",
+      "serviceAddress",
+      "serviceCity",
+      "serviceLatitude",
+      "serviceLongitude",
+      "distanceKm",
+      "visitFee",
+      "images",
+      "aiEstimation",
+      "technician",
+      "offersCount",
+      "createdAt",
+      "updatedAt",
+    ],
+  },
+
+  /** Task 7. Mirrors `toServiceRequestListItem` in requests.mapper.ts. */
+  ServiceRequestListItem: {
+    type: "object",
+    description:
+      "One row of the past-orders list. Deliberately smaller than `ServiceRequest`: a page of twenty rows renders one line of each, so there are no attachments, no description and no coordinates here. Open the row with `GET /api/v1/customer/requests/{id}` for those.",
+    properties: {
+      id: bigIntId("12", "Request id."),
+      title: { type: "string", example: "Kitchen sink is leaking" },
+      categoryName: { type: "string", example: "Plumbing" },
+      status: { type: "string", enum: Object.values(RequestStatus) },
+      requestType: { type: "string", enum: Object.values(RequestType) },
+      visitFee: nullable({ type: "string", example: "150.00" }),
+      technicianName: nullable({ type: "string", example: "Ahmed Samir" }),
+      offersCount: { type: "integer", example: 3 },
+      createdAt: timestamp("When the request was filed."),
+    },
+    required: [
+      "id",
+      "title",
+      "categoryName",
+      "status",
+      "requestType",
+      "visitFee",
+      "technicianName",
+      "offersCount",
+      "createdAt",
+    ],
   },
 
   /** Task 1. Mirrors the `toCategoryResponse` described in categories.mapper.ts. */

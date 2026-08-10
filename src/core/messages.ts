@@ -128,6 +128,9 @@ const fieldLabels: Record<string, string> = {
   title: "العنوان",
   description: "الوصف",
   images: "الصور",
+  requestType: "نوع الطلب",
+  serviceAddress: "عنوان الطلب",
+  serviceCity: "مدينة الطلب",
 };
 
 export function fieldLabel(field: string): string {
@@ -292,5 +295,17 @@ export const messages = {
   },
   points: {
     notEnough: "رصيد نقاطك مش كفاية. اشحن نقاط وحاول تاني.",
+  },
+
+  requests: {
+    notFound: "الطلب ده مش موجود",
+    /** Cancelling one that is already finished, cancelled, or under way. */
+    cannotCancel: "مش هينفع تلغي الطلب ده دلوقتي",
+    /**
+     * No address on the profile and none in the body, so there is nowhere to
+     * send anyone. Only reachable for an account that finished onboarding
+     * without one - the profile endpoints require it.
+     */
+    addressMissing: "كمّل عنوانك في حسابك الأول، أو ابعت عنوان الطلب",
   },
 };

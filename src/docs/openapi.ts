@@ -20,6 +20,10 @@ import {
   listPointsQuery,
 } from "../modules/points/points.schema.js";
 import {
+  createServiceRequestBody,
+  listMyRequestsQuery,
+} from "../modules/requests/requests.schema.js";
+import {
   dataOf,
   fromZod,
   idPathParam,
@@ -100,6 +104,15 @@ const profileExamples = {
   address: "12 Nile St",
   latitude: 30.0131,
   longitude: 31.2089,
+};
+
+/** Task 7. A body the seeded customer can actually file. */
+const serviceRequestExamples = {
+  title: "Kitchen sink is leaking",
+  description: "Water under the sink since yesterday, the pipe joint is wet.",
+  categoryId: "1",
+  requestType: "AI_ESTIMATION",
+  images: ["/uploads/1712-sink.jpg"],
 };
 
 const documentExamples = {
@@ -728,6 +741,130 @@ export const openApiDocument = {
           400: responseRef("ValidationError"),
           401: responseRef("Unauthorized"),
           403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/customer/requests - task 7, the problem and the past orders
+    //
+    // The other four routes in this group (AI estimation, publish, offers,
+    // accept) belong to tasks 8, 10 and 11 and still answer 501, so they are
+    // not described here yet.
+    // -----------------------------------------------------------------------
+    "/api/v1/customer/requests": {
+      post: {
+        tags: ["Customer"],
+        operationId: "createServiceRequest",
+        summary: "Describe my problem",
+        description: [
+          'What both buttons on the description screen post - "describe it with an AI" and "order a consultation". Only `requestType` differs.',
+          "",
+          "**This creates a draft.** It comes back as `PENDING`, which means nothing has reached a technician: publishing is a separate call (task 10). A draft is also hidden from the past-orders list below unless you ask for `?status=PENDING` by name.",
+          "",
+          "At least one image is required for both types. The AI has nothing to look at without one, and a technician pricing a visit blind will either overcharge or refuse. Upload them first with `POST /api/v1/public/uploads` and send the urls back here.",
+          "",
+          "The address fields are optional and default to the profile - send them only when the job is somewhere else. Whatever is used is **copied onto the request**, so moving house later does not rewrite where an old job happened. An account with no address on its profile and none in the body is a `400`.",
+          "",
+          "A `categoryId` that does not exist is a `409`.",
+        ].join("\n"),
+        requestBody: jsonBody(
+          withExamples(
+            fromZod(createServiceRequestBody),
+            serviceRequestExamples,
+          ),
+        ),
+        responses: {
+          201: jsonResponse(
+            "The draft, with `status: \"PENDING\"`.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+
+      get: {
+        tags: ["Customer"],
+        operationId: "listMyServiceRequests",
+        summary: "My past orders",
+        description: [
+          "Everything this customer has ordered, newest first.",
+          "",
+          "**Drafts are left out unless you ask for them by name.** With no `status` the filter is *everything except* `PENDING`: a customer who opened the AI screen and backed out left a row behind, and it is not an order they placed. `?status=PENDING` returns exactly those, so nothing is unreachable.",
+          "",
+          "The rows are the smaller `ServiceRequestListItem` shape - open one with `GET /api/v1/customer/requests/{id}` for the photos, the description and the estimate.",
+        ].join("\n"),
+        parameters: [
+          ...queryParams(listMyRequestsQuery, {
+            page: "1-based page number.",
+            limit: "Rows per page, at most 100.",
+            status:
+              "Show only one status. This is also the only way to see `PENDING` drafts.",
+          }),
+        ],
+        responses: {
+          200: jsonResponse(
+            "One page of past orders.",
+            listOf(schemaRef("ServiceRequestListItem")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}": {
+      get: {
+        tags: ["Customer"],
+        operationId: "getMyServiceRequest",
+        summary: "One of my orders",
+        description: [
+          "The detail screen: the photos, the description, the AI estimate if there is one, how many technicians have answered, and - once one is chosen - who they are and how to call them.",
+          "",
+          "**Somebody else's request is a `404`, not a `403`.** A 403 would confirm to a stranger that the id exists.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "The request.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}/cancel": {
+      post: {
+        tags: ["Customer"],
+        operationId: "cancelServiceRequest",
+        summary: "Cancel one of my orders",
+        description: [
+          "The Cancel button. Allowed while nobody has started work - `PENDING`, `WAITING_FOR_TECHNICIAN` and `TECHNICIAN_SELECTED`. Anything from `ON_THE_WAY` onwards means a technician is already moving, and `COMPLETED` / `CANCELLED` are done: all of those are a `409`.",
+          "",
+          "Every offer still open on the request is closed with it, so the job drops out of the technicians' feeds too.",
+          "",
+          "No body.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "Cancelled.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
         },
       },
     },
