@@ -55,6 +55,11 @@ export class ApiError extends Error {
     return new ApiError(402, "insufficient_points", message);
   }
 
+  /** A dependency we do not control is down - the AI provider in task 8. */
+  static serviceUnavailable(message = messages.generic.serviceUnavailable) {
+    return new ApiError(503, "service_unavailable", message);
+  }
+
   /**
    * For an endpoint that exists in the route map but has not been written yet.
    * Delete the throw as soon as you implement the handler.

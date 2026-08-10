@@ -259,6 +259,17 @@ const CATEGORY_TITLES: Record<string, string[]> = {
   ],
 };
 
+/**
+ * The one-line version of a complaint, for `ServiceRequest.title` (task 7).
+ *
+ * Every sentence above leads with what is wrong and then adds the detail after
+ * a comma or an "and", so the first clause is the headline - which is exactly
+ * what one row of the past-orders list has room to print.
+ */
+function titleFrom(complaint: string) {
+  return complaint.replace(/\.$/, "").split(/,| and /)[0].slice(0, 120);
+}
+
 const CUSTOMER_COMMENTS = [
   "وصل في الموعد وأنهى الشغل بسرعة وباحترافية.",
   "الشغل كان كويس بشكل عام، لكنه اتأخر حوالي نصف ساعة.",
@@ -823,6 +834,7 @@ async function seedServiceRequests(
       const assigned = ASSIGNED_STATUSES.includes(status);
 
       const requestType = faker.helpers.weightedArrayElement([
+
         {
           value: RequestType.AI_ESTIMATION,
           weight: 55,
@@ -855,6 +867,7 @@ async function seedServiceRequests(
         from: customer.createdAt,
         to: new Date(),
       });
+
 
       // ---------------------------------------------------------
       // HOME VISIT / DISTANCE
@@ -1103,7 +1116,6 @@ async function seedServiceRequests(
         min: 3,
         max: 5,
       });
-
       const priceFairness = faker.number.int({
         min: 2,
         max: 5,

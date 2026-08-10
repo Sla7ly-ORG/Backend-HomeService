@@ -16,6 +16,14 @@ import {
 } from "../modules/users/users.schema.js";
 import { createTechnicianProfileBody } from "../modules/technicians/technicians.schema.js";
 import {
+  grantPointsBody,
+  listPointsQuery,
+} from "../modules/points/points.schema.js";
+import {
+  createServiceRequestBody,
+  listMyRequestsQuery,
+} from "../modules/requests/requests.schema.js";
+import {
   dataOf,
   fromZod,
   idPathParam,
@@ -34,6 +42,7 @@ import {
   type JsonSchema,
 } from "./openapi.components.js";
 import { createCategoryBody, updateCategoryBody } from "../modules/categories/categories.schema.js";
+import { pingBody } from "../realtime/realtime.schema.js";
 
 /**
  * The OpenAPI 3.1 description of this API, served as a Swagger page at `/docs`
@@ -95,6 +104,15 @@ const profileExamples = {
   address: "12 Nile St",
   latitude: 30.0131,
   longitude: 31.2089,
+};
+
+/** Task 7. A body the seeded customer can actually file. */
+const serviceRequestExamples = {
+  title: "Kitchen sink is leaking",
+  description: "Water under the sink since yesterday, the pipe joint is wet.",
+  categoryId: "1",
+  requestType: "AI_ESTIMATION",
+  images: ["/uploads/1712-sink.jpg"],
 };
 
 const documentExamples = {
@@ -231,6 +249,36 @@ export const openApiDocument = {
       "```",
       "",
       "🔨 marks an endpoint that is scaffolded but not implemented yet - it answers `501` today.",
+      "",
+      "### Live updates (Socket.IO)",
+      "",
+      "A technician's feed fills up while they are looking at it, and a customer watches fees arrive without pulling to refresh. That runs over a socket on **this same host and port** - there is no second URL and no second port to open.",
+      "",
+      "```js",
+      'const socket = io("https://this-host", { auth: { token: accessToken } });',
+      "```",
+      "",
+      "The token is the same `accessToken` as above, and it goes in `auth`, never in a query string. The handshake runs the same three checks `requireAuth` does - signature, the user row, blocked/suspended - so a token that opens a socket is exactly a token that opens an endpoint.",
+      "",
+      "**Every rejection is the single string `unauthorized`**, whether the token was missing, malformed, expired, the wrong kind, or the account was deleted or blocked. Your reaction is the same in all of those cases: refresh, then reconnect. Anything more specific would only help someone probing.",
+      "",
+      "| Event | To | Payload |",
+      "| --- | --- | --- |",
+      "| `job:new` | technician | one card of `GET /api/v1/technician/jobs` |",
+      "| `job:closed` | technician | `{ requestId, reason }` - `TAKEN` / `CANCELLED` / `FULL` |",
+      "| `job:selected` | technician | `{ requestId, offerId }` |",
+      "| `offer:new` | customer | `{ requestId, offer }` - one card of `GET /api/v1/customer/requests/{id}/offers` |",
+      "| `request:updated` | customer | `{ requestId, status }` |",
+      "",
+      "The payload shapes are under **Schemas** at the bottom of this page (`JobClosedEvent` and friends). Two things about them are worth stating plainly: ids are **strings**, exactly as they are in every HTTP response here; and the card payloads come out of the very same mapper as the REST endpoint next to them, so one screen renders a list item and an event with one code path.",
+      "",
+      "**The socket never receives anything.** There is no message you can send it - every write stays an HTTP call, where the guards, the validation and the rollback already live. It is a delivery channel, not a second API.",
+      "",
+      "Three things it does not promise:",
+      "",
+      "- **Delivery.** An event emitted while the phone is in a tunnel is gone. Fetch over REST on open and on reconnect, and never assume the server knows you received something.",
+      "- **A long life.** The connection is closed once the access token that opened it would have expired, because a socket is only authenticated once. Reconnect with a fresh token on `connect_error`; this is normal, not a fault.",
+      "- **Push.** A closed app has no socket.",
     ].join("\n"),
   },
 
@@ -255,6 +303,11 @@ export const openApiDocument = {
     {
       name: "Admin · Technicians",
       description: "The approval queue for technician documents.",
+    },
+    {
+      name: "Admin · Realtime",
+      description:
+        "Poking the socket channel by hand. See **Live updates** above for the channel itself.",
     },
   ],
 
@@ -639,6 +692,184 @@ export const openApiDocument = {
     },
 
     // -----------------------------------------------------------------------
+    // /api/v1/customer/points - task 6, the wallet
+    // -----------------------------------------------------------------------
+    "/api/v1/customer/points": {
+      get: {
+        tags: ["Customer"],
+        operationId: "getPointsBalance",
+        summary: "My points balance",
+        description: [
+          "The number on the profile screen. `GET /api/v1/me` already carries the same figure as `user.pointsBalance`, so reach for this one on a wallet screen that shows nothing else.",
+          "",
+          "No `meta` here - a balance is not a list.",
+        ].join("\n"),
+        responses: {
+          200: jsonResponse(
+            "The current balance.",
+            dataOf(object({ pointsBalance: { type: "integer", example: 250 } })),
+          ),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
+    "/api/v1/customer/points/transactions": {
+      get: {
+        tags: ["Customer"],
+        operationId: "listPointsTransactions",
+        summary: "My points history",
+        description: [
+          'Where the points went, newest first. Filter with `type=SPEND` to answer "what did I spend them on".',
+          "",
+          "`amount` is signed, so a spend arrives as a negative number and `balanceAfter` is the balance once it had been applied.",
+        ].join("\n"),
+        parameters: [
+          ...queryParams(listPointsQuery, {
+            page: "1-based page number.",
+            limit: "Rows per page, at most 100.",
+            type: "Show only one kind of ledger row.",
+          }),
+        ],
+        responses: {
+          200: jsonResponse(
+            "One page of ledger rows.",
+            listOf(schemaRef("PointsTransaction")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/customer/requests - task 7, the problem and the past orders
+    //
+    // The other four routes in this group (AI estimation, publish, offers,
+    // accept) belong to tasks 8, 10 and 11 and still answer 501, so they are
+    // not described here yet.
+    // -----------------------------------------------------------------------
+    "/api/v1/customer/requests": {
+      post: {
+        tags: ["Customer"],
+        operationId: "createServiceRequest",
+        summary: "Describe my problem",
+        description: [
+          'What both buttons on the description screen post - "describe it with an AI" and "order a consultation". Only `requestType` differs.',
+          "",
+          "**This creates a draft.** It comes back as `PENDING`, which means nothing has reached a technician: publishing is a separate call (task 10). A draft is also hidden from the past-orders list below unless you ask for `?status=PENDING` by name.",
+          "",
+          "At least one image is required for both types. The AI has nothing to look at without one, and a technician pricing a visit blind will either overcharge or refuse. Upload them first with `POST /api/v1/public/uploads` and send the urls back here.",
+          "",
+          "The address fields are optional and default to the profile - send them only when the job is somewhere else. Whatever is used is **copied onto the request**, so moving house later does not rewrite where an old job happened. An account with no address on its profile and none in the body is a `400`.",
+          "",
+          "A `categoryId` that does not exist is a `409`.",
+        ].join("\n"),
+        requestBody: jsonBody(
+          withExamples(
+            fromZod(createServiceRequestBody),
+            serviceRequestExamples,
+          ),
+        ),
+        responses: {
+          201: jsonResponse(
+            "The draft, with `status: \"PENDING\"`.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+
+      get: {
+        tags: ["Customer"],
+        operationId: "listMyServiceRequests",
+        summary: "My past orders",
+        description: [
+          "Everything this customer has ordered, newest first.",
+          "",
+          "**Drafts are left out unless you ask for them by name.** With no `status` the filter is *everything except* `PENDING`: a customer who opened the AI screen and backed out left a row behind, and it is not an order they placed. `?status=PENDING` returns exactly those, so nothing is unreachable.",
+          "",
+          "The rows are the smaller `ServiceRequestListItem` shape - open one with `GET /api/v1/customer/requests/{id}` for the photos, the description and the estimate.",
+        ].join("\n"),
+        parameters: [
+          ...queryParams(listMyRequestsQuery, {
+            page: "1-based page number.",
+            limit: "Rows per page, at most 100.",
+            status:
+              "Show only one status. This is also the only way to see `PENDING` drafts.",
+          }),
+        ],
+        responses: {
+          200: jsonResponse(
+            "One page of past orders.",
+            listOf(schemaRef("ServiceRequestListItem")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}": {
+      get: {
+        tags: ["Customer"],
+        operationId: "getMyServiceRequest",
+        summary: "One of my orders",
+        description: [
+          "The detail screen: the photos, the description, the AI estimate if there is one, how many technicians have answered, and - once one is chosen - who they are and how to call them.",
+          "",
+          "**Somebody else's request is a `404`, not a `403`.** A 403 would confirm to a stranger that the id exists.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "The request.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}/cancel": {
+      post: {
+        tags: ["Customer"],
+        operationId: "cancelServiceRequest",
+        summary: "Cancel one of my orders",
+        description: [
+          "The Cancel button. Allowed while nobody has started work - `PENDING`, `WAITING_FOR_TECHNICIAN` and `TECHNICIAN_SELECTED`. Anything from `ON_THE_WAY` onwards means a technician is already moving, and `COMPLETED` / `CANCELLED` are done: all of those are a `409`.",
+          "",
+          "Every offer still open on the request is closed with it, so the job drops out of the technicians' feeds too.",
+          "",
+          "No body.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "Cancelled.",
+            dataOf(schemaRef("ServiceRequest")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
     // /api/v1/technician
     // -----------------------------------------------------------------------
     "/api/v1/technician/profile": {
@@ -798,6 +1029,35 @@ export const openApiDocument = {
     // -----------------------------------------------------------------------
     // /api/v1/admin/categories - task 1
     // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // /api/v1/admin/users/{id}/points - task 6, granting points
+    // -----------------------------------------------------------------------
+    "/api/v1/admin/users/{id}/points": {
+      parameters: [idPathParam("The user whose wallet is credited.")],
+
+      post: {
+        tags: ["Admin \u00b7 Users"],
+        operationId: "grantPoints",
+        summary: "Grant points to a user",
+        description: [
+          "Support, and how you give an account points to test with before card top-ups exist. Writes an `ADMIN_GRANT` row to the ledger next to the new balance.",
+          "",
+          "There is no `userId` in the body: it is the `:id` in the path, and an endpoint that took both would let the two disagree.",
+        ].join("\n"),
+        requestBody: jsonBody(fromZod(grantPointsBody)),
+        responses: {
+          201: jsonResponse(
+            "Points granted.",
+            dataOf(object({ pointsBalance: { type: "integer", example: 350 } })),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
     "/api/v1/admin/categories": {
       post: {
         tags: ["Admin · Categories"],
@@ -955,6 +1215,54 @@ export const openApiDocument = {
           403: responseRef("Forbidden"),
           404: responseRef("NotFound"),
           501: responseRef("NotImplemented"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/admin/realtime - task 9, seeing the socket work
+    // -----------------------------------------------------------------------
+    "/api/v1/admin/realtime/ping": {
+      post: {
+        tags: ["Admin · Realtime"],
+        operationId: "realtimePing",
+        summary: "Send a debug event to a user's socket",
+        description: [
+          "Emits `debug:ping` to one user's room, so the channel can be watched before tasks 10 and 11 emit anything real. A channel you cannot see is a channel you cannot debug.",
+          "",
+          "Connect as that user and leave it printing:",
+          "",
+          "```bash",
+          'node scripts/socket-test.mjs "$TOKEN"',
+          "```",
+          "",
+          "`debug:ping` is deliberately **not** part of the app's contract - it is not in the event table above, and nothing but this endpoint and that script should know the name.",
+          "",
+          "`delivered` says a socket server existed to emit through, not that anybody was listening. Socket.IO cannot tell us the latter and neither can we: pinging a user with no open socket is a `200` with `delivered: true`.",
+        ].join("\n"),
+        requestBody: jsonBody(
+          withExamples(fromZod(pingBody), {
+            userId: "2",
+            message: "hello",
+          }),
+        ),
+        responses: {
+          200: jsonResponse(
+            "Emitted, or dropped if no socket server is running in this process.",
+            dataOf(
+              object({
+                delivered: {
+                  type: "boolean",
+                  description:
+                    "`false` only when this process has no socket server at all.",
+                  example: true,
+                },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
         },
       },
     },

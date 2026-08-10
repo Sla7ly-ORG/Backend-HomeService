@@ -133,9 +133,21 @@ export async function creditPoints(
   amount: number,
   meta: { type: PointsTransactionType; reason?: string },
 ) {
-  const user = await tx.user.update({
-    where: { id: userId },
+  // The mirror image of spendPoints, soft-delete filter included: `tx.user
+  // .update` cannot express `deletedAt: null`, so this is an updateMany too.
+  // Crediting a deleted account would write points nobody can read back -
+  // getPointsBalance 404s on that very row.
+  const { count } = await tx.user.updateMany({
+    where: { id: userId, deletedAt: null },
     data: { pointsBalance: { increment: amount } },
+  });
+
+  if (count === 0) {
+    throw ApiError.notFound(messages.users.notFound);
+  }
+
+  const user = await tx.user.findUniqueOrThrow({
+    where: { id: userId },
     select: { pointsBalance: true },
   });
 

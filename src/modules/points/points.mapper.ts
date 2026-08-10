@@ -17,6 +17,10 @@ export function toPointsTransactionResponse(row: PointsTransaction) {
     id: row.id.toString(),
     userId: row.userId.toString(),
     type: row.type,
+    // `amount` and `balanceAfter` stay plain integers. Points are counted, not
+    // paid - they are not money, so the "money is a string" rule that applies to
+    // every Decimal in this codebase deliberately does not apply here. `amount`
+    // is signed: +100 for a grant, -50 for a spend.
     amount: row.amount,
     balanceAfter: row.balanceAfter,
     reason: row.reason,

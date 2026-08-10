@@ -38,6 +38,9 @@ enum VerificationStatus {
   REJECTED
 }
 
+// Both branches collect a photo and a description, and both end up published
+// the same way. The type only decides whether an estimate is required first,
+// and what the technician's card has room to show.
 enum RequestType {
   AI_ESTIMATION
   CONSULTATION
@@ -222,6 +225,10 @@ model ServiceRequest {
   technicianId     BigInt?       @map("technician_id")
   categoryId       BigInt        @map("category_id")
   requestType      RequestType   @map("request_type")
+
+  // The AI takes a title and a photo, and the past-orders list needs one line
+  // to show; `description` is the paragraph underneath it.
+
   title            String        @db.VarChar(120)
   description      String        @db.Text
   serviceAddress   String        @map("service_address") @db.Text
