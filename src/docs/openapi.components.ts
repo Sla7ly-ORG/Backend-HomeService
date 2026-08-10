@@ -294,6 +294,11 @@ export const schemas: Record<string, JsonSchema> = {
     allOf: [
       schemaRef("TechnicianProfile"),
       object({
+        user: schemaRef("User"),
+        category: object({
+          id: bigIntId("1", "Category id."),
+          name: { type: "string", example: "Plumbing" },
+        }),
         nationalId: {
           type: "string",
           description: "The 14 digits of the technician's national ID.",
@@ -306,7 +311,7 @@ export const schemas: Record<string, JsonSchema> = {
       }),
     ],
     description:
-      "The admin view of a technician profile: everything above plus the identity documents. Mirrors `toTechnicianProfileAdminResponse` (task 5).",
+      "The admin view of a technician profile: everything above plus the account behind it, its category, and the identity documents. Mirrors `toTechnicianProfileAdminResponse` (task 5).",
   },
 
   /** Task 1. Mirrors the `toCategoryResponse` described in categories.mapper.ts. */

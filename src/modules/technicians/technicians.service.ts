@@ -130,6 +130,9 @@ export async function listTechnicians(query: ListTechniciansQuery) {
  *                AND user.status = ACTIVE      (this is what lets them work)
  *   REJECTED  -> profile.verificationStatus = REJECTED
  *                leave user.status as PENDING so they can submit again
+ *
+ * Only a PENDING account is promoted. BLOCKED and SUSPENDED are moderation
+ * decisions, and approving a set of documents must not quietly undo them.
  */
 
 export async function setVerificationStatus(
@@ -137,7 +140,34 @@ export async function setVerificationStatus(
   data: UpdateVerificationBody,
 ) {
   return prisma.$transaction(async (tx) => {
-    const profile = await tx.technicianProfile.update({
+    // The user row is settled before the profile is read back. Doing it the
+    // other way round makes `include: { user: true }` a snapshot of the row as
+    // it was *before* the promotion, so the response says PENDING for an account
+    // this very call just moved to ACTIVE.
+    const { userId } = await tx.technicianProfile.findUniqueOrThrow({
+      where: { id: technicianProfileId },
+      select: { userId: true },
+    });
+
+    // `tx.user.update` cannot express the soft-delete filter, so the check
+    // happens here - an approval must not resurrect a deleted account.
+    const user = await tx.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { status: true },
+    });
+
+    if (!user) {
+      throw ApiError.notFound(messages.users.notFound);
+    }
+
+    if (data.verificationStatus === "VERIFIED" && user.status === "PENDING") {
+      await tx.user.update({
+        where: { id: userId },
+        data: { status: "ACTIVE" },
+      });
+    }
+
+    return tx.technicianProfile.update({
       where: { id: technicianProfileId },
       data: {
         verificationStatus: data.verificationStatus,
@@ -147,23 +177,5 @@ export async function setVerificationStatus(
         category: true,
       },
     });
-
-    if (data.verificationStatus === "VERIFIED") {
-      const { count } = await tx.user.updateMany({
-        where: {
-          id: profile.userId,
-          deletedAt: null,
-        },
-        data: {
-          status: "ACTIVE",
-        },
-      });
-
-      if (count === 0) {
-        throw ApiError.notFound(messages.users.notFound);
-      }
-    }
-
-    return profile;
   });
 }
