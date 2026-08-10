@@ -1,5 +1,8 @@
-import type { TechnicianProfile } from "../../generated/prisma/client.js";
-
+import type {
+  Prisma,
+  TechnicianProfile,
+} from "../../generated/prisma/client.js";
+import { toUserResponse } from "../users/users.mapper.js";
 
 // TASKS 3 & 5. Reference: src/modules/users/users.mapper.ts.
 
@@ -32,15 +35,33 @@ export type TechnicianProfileResponse = ReturnType<
 >;
 
 /**
- * TODO(task 5): the same fields plus `nationalId` and `criminalRecordFile`,
- * because the admin has to look at them to approve the technician.
+ * The admin's view: the same fields plus `nationalId`, `criminalRecordFile`,
+ * and the account and category behind the row, because the admin has to look at
+ * all of it to approve the technician.
  *
  * This is exactly why mappers exist: same row, two audiences, two shapes. Do
  * not be tempted to add a flag to the function above.
  */
-export function toTechnicianProfileAdminResponse(profile: TechnicianProfile) {
+type TechnicianProfileWithRelations = Prisma.TechnicianProfileGetPayload<{
+  include: {
+    user: true;
+    category: true;
+  };
+}>;
+
+export function toTechnicianProfileAdminResponse(
+  profile: TechnicianProfileWithRelations,
+) {
   return {
     ...toTechnicianProfileResponse(profile),
+
+    user: toUserResponse(profile.user),
+
+    category: {
+      id: profile.category.id.toString(),
+      name: profile.category.name,
+    },
+
     nationalId: profile.nationalId,
     criminalRecordFile: profile.criminalRecordFile,
   };
