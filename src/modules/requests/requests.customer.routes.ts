@@ -1,5 +1,17 @@
 import { Router } from "express";
 import { ApiError } from "../../core/errors.js";
+import { paginationMeta } from "../../core/pagination.js";
+import { currentUser } from "../auth/auth.middleware.js";
+import * as requestsService from "./requests.service.js";
+import {
+  toServiceRequestListItem,
+  toServiceRequestResponse,
+} from "./requests.mapper.js";
+import {
+  createServiceRequestBody,
+  listMyRequestsQuery,
+  requestIdParams,
+} from "./requests.schema.js";
 
 /**
  * TASKS 7, 8, 10 & 11 - everything a customer does with their own requests,
@@ -22,36 +34,57 @@ import { ApiError } from "../../core/errors.js";
 export const requestsCustomerRoutes = Router();
 
 /** POST /api/v1/customer/requests - the draft. */
-requestsCustomerRoutes.post("/", async (_req, res) => {
-  // TODO(task 7): parse createServiceRequestBody, call createServiceRequest,
-  //   res.status(201).json({ data: toServiceRequestResponse(request) });
-  throw ApiError.notImplemented();
+requestsCustomerRoutes.post("/", async (req, res) => {
+  const body = createServiceRequestBody.parse(req.body);
+  const request = await requestsService.createServiceRequest(
+    currentUser(req).id,
+    body,
+  );
+
+  res.status(201).json({ data: toServiceRequestResponse(request) });
 });
 
 /** GET /api/v1/customer/requests - past orders, paginated. */
-requestsCustomerRoutes.get("/", async (_req, res) => {
-  // TODO(task 7): parse listMyRequestsQuery, call listCustomerRequests, then
-  //   res.json({ data: requests.map(toServiceRequestListItem),
-  //              meta: paginationMeta(query, total) });
-  throw ApiError.notImplemented();
+requestsCustomerRoutes.get("/", async (req, res) => {
+  const query = listMyRequestsQuery.parse(req.query);
+  const { requests, total } = await requestsService.listCustomerRequests(
+    currentUser(req).id,
+    query,
+  );
+
+  res.json({
+    data: requests.map(toServiceRequestListItem),
+    meta: paginationMeta(query, total),
+  });
 });
 
 /** GET /api/v1/customer/requests/:id */
-requestsCustomerRoutes.get("/:id", async (_req, res) => {
-  // TODO(task 7): parse requestIdParams, call getCustomerRequest.
-  // Somebody else's request is a 404 - the service already answers that way.
-  throw ApiError.notImplemented();
+requestsCustomerRoutes.get("/:id", async (req, res) => {
+  const { id } = requestIdParams.parse(req.params);
+  // Somebody else's request is a 404 - the service answers that way, and the
+  // caller's id never comes off the URL.
+  const request = await requestsService.getCustomerRequest(
+    currentUser(req).id,
+    id,
+  );
+
+  res.json({ data: toServiceRequestResponse(request) });
 });
 
 /** POST /api/v1/customer/requests/:id/cancel */
-requestsCustomerRoutes.post("/:id/cancel", async (_req, res) => {
-  // TODO(task 7): cancelServiceRequest -> 200 with the updated request.
-  //
-  // TODO(task 10): the service hands back the technicians whose offers this
-  // just closed. Emit to them here, after the write:
-  //   emitJobClosed(technicianIds, requestId, "CANCELLED");
-  //   emitRequestUpdated(currentUser(req).id, requestId, "CANCELLED");
-  throw ApiError.notImplemented();
+requestsCustomerRoutes.post("/:id/cancel", async (req, res) => {
+  const { id } = requestIdParams.parse(req.params);
+  const { request } = await requestsService.cancelServiceRequest(
+    currentUser(req).id,
+    id,
+  );
+
+  // TODO(task 10): the service also hands back `technicianIds` - the
+  // technicians whose offers this just closed. Emit to them here, after the
+  // write:
+  //   emitJobClosed(technicianIds, id, "CANCELLED");
+  //   emitRequestUpdated(currentUser(req).id, id, "CANCELLED");
+  res.json({ data: toServiceRequestResponse(request) });
 });
 
 /** POST /api/v1/customer/requests/:id/ai-estimation */

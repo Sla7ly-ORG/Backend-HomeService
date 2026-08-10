@@ -205,6 +205,17 @@ const COMPLAINTS: Record<string, string[]> = {
   ],
 };
 
+/**
+ * The one-line version of a complaint, for `ServiceRequest.title` (task 7).
+ *
+ * Every sentence above leads with what is wrong and then adds the detail after
+ * a comma or an "and", so the first clause is the headline - which is exactly
+ * what one row of the past-orders list has room to print.
+ */
+function titleFrom(complaint: string) {
+  return complaint.replace(/\.$/, "").split(/,| and /)[0].slice(0, 120);
+}
+
 const CUSTOMER_COMMENTS = [
   "Arrived on time and finished quickly, very professional.",
   "Good work overall, but he was about half an hour late.",
@@ -753,7 +764,7 @@ async function seedServiceRequests(
       const assigned = ASSIGNED_STATUSES.includes(status);
       const requestType = faker.helpers.weightedArrayElement([
         { value: RequestType.AI_ESTIMATION, weight: 55 },
-        { value: RequestType.HOME_VISIT, weight: 45 },
+        { value: RequestType.CONSULTATION, weight: 45 },
       ]);
 
       // The request is filed at the customer's own address most of the time,
@@ -772,10 +783,10 @@ async function seedServiceRequests(
         to: new Date(),
       });
 
-      // A home visit is charged by distance on top of the category's call-out
+      // A consultation is charged by distance on top of the category's call-out
       // fee; an AI estimation never leaves the app, so it has neither.
       const distanceKm =
-        requestType === RequestType.HOME_VISIT
+        requestType === RequestType.CONSULTATION
           ? faker.number.float({ min: 0.8, max: 28, fractionDigits: 2 })
           : null;
       const visitFee =
@@ -873,7 +884,7 @@ async function seedServiceRequests(
       const priceFairness = faker.number.int({ min: 2, max: 5 });
 
       // What the customer actually handed over: inside the estimate for an AI
-      // request, inside the band plus the call-out fee for a home visit.
+      // request, inside the band plus the call-out fee for a consultation.
       const actualPaidPrice =
         requestType === RequestType.AI_ESTIMATION
           ? faker.number.int({ min: estimateMin, max: estimateMax })
@@ -881,15 +892,20 @@ async function seedServiceRequests(
 
       const attachmentCount = faker.number.int({ min: 0, max: 3 });
 
+      // Picked once: the title is the headline of the same sentence, not a
+      // second draw that would describe a different problem.
+      const complaint = faker.helpers.arrayElement(
+        COMPLAINTS[category.name] ?? [faker.lorem.sentence()],
+      );
+
       const request = await prisma.serviceRequest.create({
         data: {
           customerId: customer.id,
           technicianId: selected?.id ?? null,
           categoryId: category.id,
           requestType,
-          description: faker.helpers.arrayElement(
-            COMPLAINTS[category.name] ?? [faker.lorem.sentence()],
-          ),
+          title: titleFrom(complaint),
+          description: complaint,
           serviceAddress: place.address,
           serviceCity: place.city,
           serviceLatitude: place.latitude,
