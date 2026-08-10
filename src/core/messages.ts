@@ -123,6 +123,11 @@ const fieldLabels: Record<string, string> = {
   page: "رقم الصفحة",
   limit: "عدد النتائج",
   search: "كلمة البحث",
+  points: "النقط",
+  amount: "الكمية",
+  title: "العنوان",
+  description: "الوصف",
+  images: "الصور",
 };
 
 export function fieldLabel(field: string): string {
@@ -160,6 +165,8 @@ export const messages = {
     notImplemented: "الخدمة دي لسه مش شغالة",
     /** Anything that reached the error handler as a bug. */
     serverError: "في مشكلة عندنا، حاول تاني كمان شوية",
+    /** A dependency we do not control is down - see ApiError.serviceUnavailable. */
+    serviceUnavailable: "الخدمة دي مش متاحة دلوقتي، حاول تاني كمان شوية",
     /** No route matched the URL at all. */
     routeNotFound: (method: string, url: string) =>
       `مفيش أي حاجة على العنوان ده: ${method} ${url}`,
@@ -284,6 +291,6 @@ export const messages = {
     suspended: "الحساب ده موقوف",
   },
   points: {
-    notEnough: "رصيد النقط مش كفاية",
+    notEnough: "رصيد نقاطك مش كفاية. اشحن نقاط وحاول تاني.",
   },
 };

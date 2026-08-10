@@ -96,7 +96,7 @@ model User {
   longitude  Decimal?   @db.Decimal(11, 8)
   status     UserStatus @default(PENDING)
 
-  pointsBalance Int @default(0) @map("points_balance") 
+  pointsBalance Int @default(0) @map("points_balance")
 
   createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -119,7 +119,6 @@ model User {
 
   technicianReviewsWritten TechnicianReview[] @relation("TechnicianReviewAuthor")
   technicianReviewsReceived TechnicianReview[] @relation("TechnicianReviewSubject")
-
 
   @@index([role])
   @@index([status])
@@ -360,7 +359,7 @@ model TechnicianReview {
 }
 
 // ---------------------------------------------------------------------------
-// 12. points_transactions 
+// 12. points_transactions
 // ---------------------------------------------------------------------------
 
 model PointsTransaction {
