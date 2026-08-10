@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { ApiError } from "../core/errors.js";
+import { roomFor } from "./realtime.events.js";
+import { pingBody } from "./realtime.schema.js";
+import { getIo } from "./realtime.server.js";
 
 /**
  * TASK 9 - a way to see the socket working, mounted at /api/v1/admin/realtime.
@@ -14,14 +16,17 @@ import { ApiError } from "../core/errors.js";
 export const realtimeAdminRoutes = Router();
 
 /** POST /api/v1/admin/realtime/ping - { userId, message } */
-realtimeAdminRoutes.post("/ping", async (_req, res) => {
-  // TODO(task 9): parse a small body ({ userId: idField, message: string }),
-  // then emit straight through the io instance:
-  //
-  //   getIo()?.to(roomFor(userId)).emit("debug:ping", { message });
-  //   res.json({ data: { delivered: getIo() !== null } });
-  //
-  // `debug:ping` is deliberately not in `events` - it is not part of the app's
-  // contract, and nothing but this route and the test script should know it.
-  throw ApiError.notImplemented();
+realtimeAdminRoutes.post("/ping", async (req, res) => {
+  const body = pingBody.parse(req.body);
+  const io = getIo();
+
+  // Straight through `io` rather than through realtime.emit.ts: `debug:ping` is
+  // deliberately not in `events`. It is not part of the app's contract, and
+  // nothing but this route and scripts/socket-test.mjs should know the name.
+  io?.to(roomFor(body.userId)).emit("debug:ping", { message: body.message });
+
+  // `delivered` says a server existed to emit through, not that anybody was
+  // listening - Socket.IO cannot tell us the latter, and neither can we. An
+  // empty room is a 200 with `delivered: true`.
+  res.json({ data: { delivered: io !== null } });
 });

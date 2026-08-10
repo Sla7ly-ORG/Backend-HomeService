@@ -622,6 +622,75 @@ export const schemas: Record<string, JsonSchema> = {
     example: "من فضلك كمّل بياناتك",
   },
 
+  /**
+   * Task 9. The payloads the socket sends - see src/realtime/realtime.events.ts,
+   * which is the file these mirror.
+   *
+   * These are not returned by any endpoint, so nothing `$ref`s them. They are
+   * declared anyway so the app team can read the socket contract on the same
+   * page as the REST one; Swagger UI lists them under **Schemas** at the bottom.
+   * OpenAPI has no way to describe a socket, so this is the honest half-measure.
+   */
+  JobNewEvent: {
+    type: "object",
+    description:
+      "`job:new` → technician. The payload **is one element of `GET /api/v1/technician/jobs`** - same mapper, so a card rendered from the list and a card rendered from this event cannot look different. Task 10 emits it, once per technician, because `distanceKm` differs per recipient.",
+    properties: {},
+  },
+
+  JobClosedEvent: {
+    type: "object",
+    description:
+      "`job:closed` → technician. Take that card off the screen. The reason exists because the app shows a different sentence for each - that is the only thing stopping this being a single \"gone\" event.",
+    properties: {
+      requestId: bigIntId("12", "The request whose card should go."),
+      reason: {
+        type: "string",
+        enum: ["TAKEN", "CANCELLED", "FULL"],
+        description:
+          "`TAKEN` another technician was chosen · `CANCELLED` the customer cancelled · `FULL` enough fees are in and the customer is deciding.",
+      },
+    },
+    required: ["requestId", "reason"],
+  },
+
+  JobSelectedEvent: {
+    type: "object",
+    description:
+      "`job:selected` → technician. They got it, and may now read the address and the customer's phone.",
+    properties: {
+      requestId: bigIntId("12", "The request they were chosen for."),
+      offerId: bigIntId("31", "Their offer, now `SELECTED`."),
+    },
+    required: ["requestId", "offerId"],
+  },
+
+  OfferNewEvent: {
+    type: "object",
+    description:
+      "`offer:new` → customer. A technician sent a fee. `offer` **is one element of `GET /api/v1/customer/requests/{id}/offers`** - same mapper again.",
+    properties: {
+      requestId: bigIntId("12", "The request the fee is for."),
+      offer: {
+        type: "object",
+        description: "One offer card, task 11's mapper.",
+        properties: {},
+      },
+    },
+    required: ["requestId", "offer"],
+  },
+
+  RequestUpdatedEvent: {
+    type: "object",
+    description:
+      "`request:updated` → customer. The request moved on: a technician was chosen, is on the way, arrived, finished, or it was cancelled.",
+    properties: {
+      requestId: bigIntId("12", "The request that moved."),
+      status: { type: "string", enum: Object.values(RequestStatus) },
+    },
+    required: ["requestId", "status"],
+  },
+
   /** From `paginationMeta` in core/pagination.ts. */
   PaginationMeta: {
     type: "object",

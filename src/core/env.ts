@@ -26,6 +26,14 @@ const envSchema = z.object({
   // wants to point at a mounted volume, or every deploy throws the files away -
   // see the `uploads` volume in docker-compose.yml.
   UPLOAD_DIR: z.string().min(1).default("uploads"),
+
+  // Comma-separated origins allowed to open a socket, or `*` for any.
+  //
+  // A native app does not send an `Origin` header, so this changes nothing for
+  // the phone. It matters for a browser: the Socket.IO handshake is an ordinary
+  // HTTP request before it is a socket, so a dashboard served from another host
+  // is refused at that handshake unless its origin is listed here.
+  SOCKET_CORS_ORIGIN: z.string().min(1).default("*"),
 });
 
 const parsed = envSchema.safeParse(process.env);
