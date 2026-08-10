@@ -1,4 +1,9 @@
 import { ApiError } from "../../core/errors.js";
+import { messages } from "../../core/messages.js";
+import { skipTake } from "../../core/pagination.js";
+import { prisma } from "../../core/prisma.js";
+import { Prisma } from "../../generated/prisma/client.js";
+import type { RequestStatus } from "../../generated/prisma/enums.js";
 import type {
   CreateServiceRequestBody,
   ListMyRequestsQuery,
@@ -14,83 +19,249 @@ import type {
  */
 
 /**
+ * Everything the detail screen shows. Exported because requests.mapper.ts
+ * derives its parameter type from it - add a relation here and the mapper is a
+ * type error until it handles it, which is the point.
+ */
+export const requestDetailInclude = {
+  attachments: true,
+  aiEstimation: true,
+  category: true,
+  technician: true,
+  _count: { select: { offers: true } },
+} satisfies Prisma.ServiceRequestInclude;
+
+/**
+ * Deliberately smaller: no attachments. A page of twenty rows renders one line
+ * of each, and twenty sets of image urls is twenty joins nobody looks at.
+ */
+export const requestListInclude = {
+  aiEstimation: true,
+  category: true,
+  technician: true,
+  _count: { select: { offers: true } },
+} satisfies Prisma.ServiceRequestInclude;
+
+export type ServiceRequestDetail = Prisma.ServiceRequestGetPayload<{
+  include: typeof requestDetailInclude;
+}>;
+
+export type ServiceRequestListRow = Prisma.ServiceRequestGetPayload<{
+  include: typeof requestListInclude;
+}>;
+
+/**
+ * Cancelling is only meaningful while nobody has started work. `ON_THE_WAY` and
+ * everything after it means a technician is already moving, and `COMPLETED` /
+ * `CANCELLED` are done - all four are a 409.
+ */
+const CANCELLABLE_STATUSES: RequestStatus[] = [
+  "PENDING",
+  "WAITING_FOR_TECHNICIAN",
+  "TECHNICIAN_SELECTED",
+];
+
+/**
+ * The offer states a live request can leave behind. `ACCEPTED` is what a
+ * technician's submitted fee is called today; task 10 renames the enum value to
+ * `SUBMITTED` and this list changes with it.
+ */
+const OPEN_OFFER_STATUSES = ["PENDING", "ACCEPTED"] as const;
+
+/**
  * TASK 7 - the draft, created the moment the customer submits the description
  * screen. Both buttons land here; only `requestType` differs.
  *
- * One `prisma.$transaction`:
- *   1. create the request with `status: "PENDING"`
- *   2. `tx.requestAttachment.createMany` for the images
- *
- * **The address is a snapshot, not a join.** Default it from the user's profile
- * when the body did not override it, but copy the values onto the request: the
- * customer may move house next year, and the job happened where it happened.
- * Same reasoning as `visitFee` in task 11.
+ * **The address is a snapshot, not a join.** It defaults from the user's
+ * profile when the body did not override it, but the values are copied onto the
+ * request: the customer may move house next year, and the job happened where it
+ * happened. Same reasoning as `visitFee` in task 11.
  *
  * A `categoryId` that does not exist is a Prisma P2003 and the error handler
- * already turns it into a 409. Do not pre-check it.
+ * already turns it into a 409, so there is no pre-check for it here.
  */
 export async function createServiceRequest(
   customerId: bigint,
   data: CreateServiceRequestBody,
 ) {
-  // TODO(task 7)
-  throw ApiError.notImplemented();
+  const customer = await prisma.user.findFirst({
+    where: { id: customerId, deletedAt: null },
+    select: { address: true, city: true, latitude: true, longitude: true },
+  });
+
+  if (!customer) {
+    throw ApiError.notFound(messages.users.notFound);
+  }
+
+  const serviceAddress = data.serviceAddress ?? customer.address;
+  const serviceCity = data.serviceCity ?? customer.city;
+  const serviceLatitude = data.latitude ?? customer.latitude?.toNumber();
+  const serviceLongitude = data.longitude ?? customer.longitude?.toNumber();
+
+  // Every profile column here is nullable, so the four defaults can all come
+  // back empty. In practice onboarding fills them in, but a half-finished
+  // account must not create a job with nowhere to send anyone.
+  if (
+    serviceAddress === null ||
+    serviceCity === null ||
+    serviceLatitude === undefined ||
+    serviceLongitude === undefined
+  ) {
+    throw ApiError.badRequest(messages.requests.addressMissing);
+  }
+
+  const id = await prisma.$transaction(async (tx) => {
+    const { id } = await tx.serviceRequest.create({
+      data: {
+        customerId,
+        categoryId: data.categoryId,
+        requestType: data.requestType,
+        title: data.title,
+        description: data.description,
+        serviceAddress,
+        serviceCity,
+        serviceLatitude,
+        serviceLongitude,
+        // A draft, always. Publishing is task 10's separate call, and this one
+        // must not put anything in front of a technician.
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+
+    await tx.requestAttachment.createMany({
+      data: data.images.map((imageUrl) => ({ requestId: id, imageUrl })),
+    });
+
+    return id;
+  });
+
+  // Read back rather than reusing the row `create` returned: the attachments
+  // were written after it, so that row does not know about them.
+  //
+  // **Outside the transaction on purpose.** A multi-relation `include` makes
+  // Prisma load the relations concurrently, and inside `$transaction` those all
+  // share one pg client - which pg deprecates and drops in pg@9. Reading after
+  // the commit also keeps the write's locks as short as they can be.
+  return prisma.serviceRequest.findUniqueOrThrow({
+    where: { id },
+    include: requestDetailInclude,
+  });
 }
 
 /**
  * TASK 7 - the past-orders screen. A page plus a total, newest first.
  *
- * `where: { customerId, ... }` always - scope it in the query, never fetch and
- * then compare in JS. `include: { category: true, technician: true,
- * aiEstimation: true, _count: { select: { offers: true } } }`.
- *
  * **Drafts are excluded unless they are asked for by name.** With no
- * `query.status`, filter `status: { not: "PENDING" }`: a customer who opened
- * the AI screen and backed out left a row behind, and it is not an order they
- * placed. `?status=PENDING` still returns them, so nothing is unreachable.
+ * `query.status` the filter is `status: { not: "PENDING" }`: a customer who
+ * opened the AI screen and backed out left a row behind, and it is not an order
+ * they placed. `?status=PENDING` still returns them, so nothing is unreachable.
  */
 export async function listCustomerRequests(
   customerId: bigint,
   query: ListMyRequestsQuery,
 ) {
-  // TODO(task 7): returns { requests, total }
-  throw ApiError.notImplemented();
+  // Scoped in the query, never fetched and then compared in JS.
+  const where: Prisma.ServiceRequestWhereInput = {
+    customerId,
+    status: query.status ?? { not: "PENDING" },
+  };
+
+  const [requests, total] = await Promise.all([
+    prisma.serviceRequest.findMany({
+      where,
+      include: requestListInclude,
+      orderBy: { createdAt: "desc" },
+      ...skipTake(query),
+    }),
+    prisma.serviceRequest.count({ where }),
+  ]);
+
+  return { requests, total };
 }
 
 /**
- * TASK 7 - one request, with everything the detail screen shows: attachments,
- * estimation, category, technician, and `_count: { select: { offers: true } }`.
+ * TASK 7 - one request, with everything the detail screen shows.
  *
- * `findFirst({ where: { id: requestId, customerId } })`. Somebody else's
- * request is a **404, not a 403** - a 403 confirms to a stranger that the id
- * exists.
+ * Somebody else's request is a **404, not a 403** - a 403 confirms to a
+ * stranger that the id exists, and `customerId` is in the `where` rather than
+ * in an `if`, so there is no shape of this function that leaks one.
  */
 export async function getCustomerRequest(customerId: bigint, requestId: bigint) {
-  // TODO(task 7)
-  throw ApiError.notImplemented();
+  const request = await prisma.serviceRequest.findFirst({
+    where: { id: requestId, customerId },
+    include: requestDetailInclude,
+  });
+
+  if (!request) {
+    throw ApiError.notFound(messages.requests.notFound);
+  }
+
+  return request;
 }
 
 /**
  * TASK 7 - the Cancel button on the waiting screen.
  *
- * Allowed from `PENDING`, `WAITING_FOR_TECHNICIAN` and `TECHNICIAN_SELECTED`;
- * anything else is a 409. One transaction:
- *   - the request to `CANCELLED`
- *   - every offer still `PENDING` or `SUBMITTED` to `NOT_SELECTED`, so it drops
- *     out of the technicians' feeds too
- *
- * **Return the ids of the technicians whose offers it just closed.** Collect
- * them with a `findMany({ select: { technicianId: true } })` *inside* the
- * transaction and *before* the `updateMany`, or nothing will match any more.
- * Task 10 hands them to `emitJobClosed(ids, requestId, "CANCELLED")` so the
- * card disappears from the screens people are actually looking at.
+ * Returns the updated request together with **the ids of the technicians whose
+ * offers it just closed**. Nothing uses them today; task 10 hands them to
+ * `emitJobClosed(ids, requestId, "CANCELLED")` so the card disappears from the
+ * screens people are actually looking at.
  */
 export async function cancelServiceRequest(
   customerId: bigint,
   requestId: bigint,
 ) {
-  // TODO(task 7)
-  throw ApiError.notImplemented();
+  const technicianIds = await prisma.$transaction(async (tx) => {
+    const existing = await tx.serviceRequest.findFirst({
+      where: { id: requestId, customerId },
+      select: { status: true },
+    });
+
+    if (!existing) {
+      throw ApiError.notFound(messages.requests.notFound);
+    }
+
+    if (!CANCELLABLE_STATUSES.includes(existing.status)) {
+      throw ApiError.conflict(messages.requests.cannotCancel);
+    }
+
+    // Collected *before* the updateMany below, and inside this transaction:
+    // once those rows are NOT_SELECTED nothing matches the filter any more and
+    // the list comes back empty.
+    const openOffers = await tx.technicianOffer.findMany({
+      where: {
+        serviceRequestId: requestId,
+        status: { in: [...OPEN_OFFER_STATUSES] },
+      },
+      select: { technicianId: true },
+    });
+
+    await tx.technicianOffer.updateMany({
+      where: {
+        serviceRequestId: requestId,
+        status: { in: [...OPEN_OFFER_STATUSES] },
+      },
+      data: { status: "NOT_SELECTED" },
+    });
+
+    await tx.serviceRequest.update({
+      where: { id: requestId },
+      data: { status: "CANCELLED" },
+      select: { id: true },
+    });
+
+    return openOffers.map((offer) => offer.technicianId);
+  });
+
+  // After the commit, for the same reason as in `createServiceRequest`: the
+  // detail `include` must not run on the transaction's client.
+  const request = await prisma.serviceRequest.findUniqueOrThrow({
+    where: { id: requestId },
+    include: requestDetailInclude,
+  });
+
+  return { request, technicianIds };
 }
 
 /**

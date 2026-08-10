@@ -640,7 +640,7 @@ curl localhost:3000/api/v1/customer/points/transactions -H "Authorization: Beare
 
 ---
 
-# Task 7 — The customer's problem, and their past orders
+# Task 7 — The customer's problem, and their past orders ✅ done
 
 Two screens: the list of everything they have ordered before, and the form
 behind both "describe it with AI" and "order a consultation". The form only
@@ -648,10 +648,10 @@ creates a **draft** — nothing reaches a technician until task 10 publishes it.
 
 **`prisma/schema.prisma`**
 
-- [ ] `ServiceRequest.title` — `String @db.VarChar(120)`. The AI takes a title
+- [x] `ServiceRequest.title` — `String @db.VarChar(120)`. The AI takes a title
       and a photo, and the past-orders list needs one line to show; `description`
       is the paragraph underneath. Migrate.
-- [ ] Rename `RequestType.HOME_VISIT` to `CONSULTATION`, and say in a comment
+- [x] Rename `RequestType.HOME_VISIT` to `CONSULTATION`, and say in a comment
       what the two branches now mean:
 
       ```prisma
@@ -667,7 +667,7 @@ creates a **draft** — nothing reaches a technician until task 10 publishes it.
 
 **`src/modules/requests/requests.schema.ts`**
 
-- [ ] `createServiceRequestBody` — `title` (3–120), `description` (10–2000),
+- [x] `createServiceRequestBody` — `title` (3–120), `description` (10–2000),
       `categoryId` (`idField`), `requestType` (`AI_ESTIMATION` | `CONSULTATION`),
       `images` (array of URL strings from `POST /public/uploads`, **1–5,
       required for both types**), and an optional address override
@@ -675,8 +675,8 @@ creates a **draft** — nothing reaches a technician until task 10 publishes it.
 
       A photo is required either way: the AI has nothing to look at without one,
       and a technician pricing a visit blind will either overcharge or refuse.
-- [ ] `listMyRequestsQuery` — `paginationQuery` plus an optional `status`.
-- [ ] `requestIdParams` = `idParams`; `requestOfferParams` for
+- [x] `listMyRequestsQuery` — `paginationQuery` plus an optional `status`.
+- [x] `requestIdParams` = `idParams`; `requestOfferParams` for
       `/:id/offers/:offerId` (task 11).
 
 **`src/modules/requests/requests.service.ts`**
@@ -688,13 +688,13 @@ getCustomerRequest(customerId: bigint, requestId: bigint)
 cancelServiceRequest(customerId: bigint, requestId: bigint)
 ```
 
-- [ ] `createServiceRequest` — one `prisma.$transaction`: create the request with
+- [x] `createServiceRequest` — one `prisma.$transaction`: create the request with
       `status: "PENDING"`, then `tx.requestAttachment.createMany` for the images.
       **The address is a snapshot, not a join.** Default it from the user's
       profile, but copy the values onto the request — the customer may move house
       next year and the job happened where it happened. A bad `categoryId` is a
       P2003 → 409 on its own; do not pre-check it.
-- [ ] `listCustomerRequests` — the past-orders screen. A page + a total, newest
+- [x] `listCustomerRequests` — the past-orders screen. A page + a total, newest
       first, `where: { customerId }`, `include: { category: true, technician: true,
       aiEstimation: true, _count: { select: { offers: true } } }`. Always scope by
       `customerId` in the `where` — never fetch and then compare in JS.
@@ -703,10 +703,10 @@ cancelServiceRequest(customerId: bigint, requestId: bigint)
       `?status=`, filter `status: { not: "PENDING" }`: a customer who opened the
       AI screen and backed out left a row behind, and it is not an order they
       placed. `?status=PENDING` still returns them, so nothing is unreachable.
-- [ ] `getCustomerRequest` — `findFirst({ where: { id, customerId } })`, plus
+- [x] `getCustomerRequest` — `findFirst({ where: { id, customerId } })`, plus
       attachments, estimation, category, technician and `_count: { select: { offers: true } }`.
       Not theirs → **404, not 403.** A 403 tells a stranger the request exists.
-- [ ] `cancelServiceRequest` — allowed from `PENDING`, `WAITING_FOR_TECHNICIAN`
+- [x] `cancelServiceRequest` — allowed from `PENDING`, `WAITING_FOR_TECHNICIAN`
       and `TECHNICIAN_SELECTED`; anything else is a 409. One transaction: the
       request to `CANCELLED`, and every offer still `PENDING` or `SUBMITTED` to
       `NOT_SELECTED`, so it drops out of the technicians' feeds too.
@@ -719,23 +719,23 @@ cancelServiceRequest(customerId: bigint, requestId: bigint)
 
 **`src/modules/requests/requests.mapper.ts`**
 
-- [ ] `toServiceRequestResponse(request)` — the customer's own view. Ids as
+- [x] `toServiceRequestResponse(request)` — the customer's own view. Ids as
       strings, `visitFee`/`distanceKm` as strings or null, attachments as an
       array of urls, `aiEstimation` nested or null. Include the assigned
       technician's **phone** here — but only when `status` is
       `TECHNICIAN_SELECTED` or past it, because that is the point at which the
       two of them are supposed to talk.
-- [ ] `toServiceRequestListItem(request)` — the past-orders row: id, title,
+- [x] `toServiceRequestListItem(request)` — the past-orders row: id, title,
       category name, status, `requestType`, createdAt, visitFee, technician
       name, and `offersCount` from `_count`. Deliberately smaller than the one
       above; a list of 20 does not need 20 sets of attachments.
 
 **`src/modules/requests/requests.customer.routes.ts`**
 
-- [ ] `POST /` → 201
-- [ ] `GET /` → `{ data, meta }`
-- [ ] `GET /:id` → 200
-- [ ] `POST /:id/cancel` → 200
+- [x] `POST /` → 201
+- [x] `GET /` → `{ data, meta }`
+- [x] `GET /:id` → 200
+- [x] `POST /:id/cancel` → 200
 
 **Wiring** — already done: `customerRouter.use("/requests", …)` is in
 `src/api/customer.ts`. All eight routes in that file are mounted and answering
