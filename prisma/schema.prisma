@@ -40,7 +40,7 @@ enum VerificationStatus {
 
 enum RequestType {
   AI_ESTIMATION
-  HOME_VISIT
+  CONSULTATION
 }
 
 enum RequestStatus {
@@ -85,22 +85,22 @@ enum PointsTransactionType {
 //   ACTIVE   profile complete, can use the app
 //   BLOCKED / SUSPENDED  moderation
 model User {
-  id        BigInt     @id @default(autoincrement())
-  fullName  String?    @map("full_name") @db.VarChar(100)
-  phone     String     @unique @db.VarChar(20)
+  id       BigInt  @id @default(autoincrement())
+  fullName String? @map("full_name") @db.VarChar(100)
+  phone    String  @unique @db.VarChar(20)
 
-  role       UserRole   @default(CUSTOMER)
-  city       String?    @db.VarChar(100)
-  address    String?    @db.Text
-  latitude   Decimal?   @db.Decimal(10, 8)
-  longitude  Decimal?   @db.Decimal(11, 8)
-  status     UserStatus @default(PENDING)
+  role      UserRole   @default(CUSTOMER)
+  city      String?    @db.VarChar(100)
+  address   String?    @db.Text
+  latitude  Decimal?   @db.Decimal(10, 8)
+  longitude Decimal?   @db.Decimal(11, 8)
+  status    UserStatus @default(PENDING)
 
-  pointsBalance Int @default(0) @map("points_balance") 
+  pointsBalance Int @default(0) @map("points_balance")
 
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   // =========================
   // Relations
@@ -111,20 +111,18 @@ model User {
   requestsAsCustomer   ServiceRequest[] @relation("RequestCustomer")
   requestsAsTechnician ServiceRequest[] @relation("RequestTechnician")
 
+  technicianOffers   TechnicianOffer[]
   pointsTransactions PointsTransaction[]
-  technicianOffers TechnicianOffer[]
 
-  customerReviewsWritten CustomerReview[] @relation("CustomerReviewAuthor")
+  customerReviewsWritten  CustomerReview[] @relation("CustomerReviewAuthor")
   customerReviewsReceived CustomerReview[] @relation("CustomerReviewSubject")
 
-  technicianReviewsWritten TechnicianReview[] @relation("TechnicianReviewAuthor")
+  technicianReviewsWritten  TechnicianReview[] @relation("TechnicianReviewAuthor")
   technicianReviewsReceived TechnicianReview[] @relation("TechnicianReviewSubject")
-
 
   @@index([role])
   @@index([status])
   @@index([createdAt])
-
   @@map("users")
 }
 
@@ -133,14 +131,14 @@ model User {
 // ---------------------------------------------------------------------------
 
 model Otp {
-  id         BigInt    @id @default(autoincrement())
-  phone      String    @db.VarChar(20)
-  otpCode    String    @map("otp_code") @db.VarChar(10)
-  attempts   Int       @default(0)
+  id           BigInt    @id @default(autoincrement())
+  phone        String    @db.VarChar(20)
+  otpCode      String    @map("otp_code") @db.VarChar(10)
+  attempts     Int       @default(0)
   blockedUntil DateTime? @map("blocked_until")
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
-  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([phone, createdAt])
   @@map("otp")
@@ -224,6 +222,7 @@ model ServiceRequest {
   technicianId     BigInt?       @map("technician_id")
   categoryId       BigInt        @map("category_id")
   requestType      RequestType   @map("request_type")
+  title            String        @db.VarChar(120)
   description      String        @db.Text
   serviceAddress   String        @map("service_address") @db.Text
   serviceCity      String        @map("service_city") @db.VarChar(100)
@@ -232,19 +231,25 @@ model ServiceRequest {
   distanceKm       Decimal?      @map("distance_km") @db.Decimal(10, 2)
   visitFee         Decimal?      @map("visit_fee") @db.Decimal(10, 2)
   status           RequestStatus @default(PENDING)
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  aiRequestId    String?   @map("ai_request_id") @db.VarChar(255)
+  aiSeverity     Severity? @map("ai_severity")
+  aiConfidence   Decimal?  @map("ai_confidence") @db.Decimal(5, 2)
+  aiNeedsReview  Boolean   @default(false) @map("ai_needs_review")
+  actualSeverity Severity? @map("actual_severity")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   customer   User     @relation("RequestCustomer", fields: [customerId], references: [id], onDelete: Restrict)
   technician User?    @relation("RequestTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  attachments      RequestAttachment[]
-  aiEstimation     AiEstimation?
-  offers           TechnicianOffer[]
+  attachments        RequestAttachment[]
+  offers             TechnicianOffer[]
   pointsTransactions PointsTransaction[]
-  customerReview   CustomerReview?
-  technicianReview TechnicianReview?
+  customerReview     CustomerReview?
+  technicianReview   TechnicianReview?
 
   @@index([customerId])
   @@index([technicianId])
@@ -270,25 +275,7 @@ model RequestAttachment {
 }
 
 // ---------------------------------------------------------------------------
-// 8. ai_estimations 
-// ---------------------------------------------------------------------------
-
-model AiEstimation {
-  id               BigInt   @id @default(autoincrement())
-  serviceRequestId BigInt   @unique @map("service_request_id")
-  severity         Severity
-  minPrice         Decimal  @map("min_price") @db.Decimal(10, 2)
-  maxPrice         Decimal  @map("max_price") @db.Decimal(10, 2)
-  confidence       Decimal  @db.Decimal(5, 2)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
-
-  @@map("ai_estimations")
-}
-
-// ---------------------------------------------------------------------------
-// 9. technician_offers 
+// 8. technician_offers 
 // ---------------------------------------------------------------------------
 
 model TechnicianOffer {
@@ -310,7 +297,7 @@ model TechnicianOffer {
 }
 
 // ---------------------------------------------------------------------------
-// 10. customer_reviews 
+// 9. customer_reviews 
 // ---------------------------------------------------------------------------
 
 model CustomerReview {
@@ -338,7 +325,7 @@ model CustomerReview {
 }
 
 // ---------------------------------------------------------------------------
-// 11. technician_reviews 
+// 10. technician_reviews 
 // ---------------------------------------------------------------------------
 
 model TechnicianReview {
@@ -360,18 +347,18 @@ model TechnicianReview {
 }
 
 // ---------------------------------------------------------------------------
-// 12. points_transactions 
+// 11. points_transactions 
 // ---------------------------------------------------------------------------
 
 model PointsTransaction {
-  id               BigInt                 @id @default(autoincrement())
-  userId           BigInt                 @map("user_id")
+  id               BigInt                @id @default(autoincrement())
+  userId           BigInt                @map("user_id")
   type             PointsTransactionType
   amount           Int
-  balanceAfter     Int                    @map("balance_after")
-  reason           String?                @db.VarChar(255)
-  serviceRequestId BigInt?                @map("service_request_id")
-  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  balanceAfter     Int                   @map("balance_after")
+  reason           String?               @db.VarChar(255)
+  serviceRequestId BigInt?               @map("service_request_id")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)

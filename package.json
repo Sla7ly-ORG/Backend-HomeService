@@ -9,6 +9,7 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "docker:up": "docker compose -f docker-compose.yml -f docker-compose.local.yml up --build",
+    "docker:down": "docker compose -f docker-compose.yml -f docker-compose.local.yml down",
     "typecheck": "tsc --noEmit",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

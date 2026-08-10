@@ -91,27 +91,96 @@ const CITIES = [
 ];
 
 const FIRST_NAMES = [
-  "Mona", "Karim", "Ahmed", "Mahmoud", "Youssef", "Omar", "Hassan", "Sara",
-  "Nour", "Salma", "Mostafa", "Amr", "Heba", "Dina", "Tarek", "Rania",
-  "Khaled", "Mai", "Ali", "Fatma", "Ibrahim", "Aya", "Sherif", "Yara",
-  "Mohamed", "Hana", "Islam", "Reem", "Ashraf", "Basma", "Hazem", "Nada",
+  "Mona",
+  "Karim",
+  "Ahmed",
+  "Mahmoud",
+  "Youssef",
+  "Omar",
+  "Hassan",
+  "Sara",
+  "Nour",
+  "Salma",
+  "Mostafa",
+  "Amr",
+  "Heba",
+  "Dina",
+  "Tarek",
+  "Rania",
+  "Khaled",
+  "Mai",
+  "Ali",
+  "Fatma",
+  "Ibrahim",
+  "Aya",
+  "Sherif",
+  "Yara",
+  "Mohamed",
+  "Hana",
+  "Islam",
+  "Reem",
+  "Ashraf",
+  "Basma",
+  "Hazem",
+  "Nada",
 ];
 
 const LAST_NAMES = [
-  "Ali", "Fathy", "Hassan", "Ibrahim", "Mansour", "Abdelrahman", "Saleh",
-  "Farouk", "Ezzat", "Shafik", "Nasser", "Zaki", "Sabry", "Gaber", "Kamel",
-  "Radwan", "Hamdy", "Serag", "Wasfy", "Adel", "Sami", "Lotfy",
+  "Ali",
+  "Fathy",
+  "Hassan",
+  "Ibrahim",
+  "Mansour",
+  "Abdelrahman",
+  "Saleh",
+  "Farouk",
+  "Ezzat",
+  "Shafik",
+  "Nasser",
+  "Zaki",
+  "Sabry",
+  "Gaber",
+  "Kamel",
+  "Radwan",
+  "Hamdy",
+  "Serag",
+  "Wasfy",
+  "Adel",
+  "Sami",
+  "Lotfy",
 ];
 
 const STREETS = [
-  "Nile", "Tahrir", "Ramses", "El Haram", "Gameat El Dowal", "Abbas El Akkad",
-  "El Merghany", "Makram Ebeid", "El Batal Ahmed Abdel Aziz", "Faisal",
-  "El Nasr", "Salah Salem", "Port Said", "El Thawra", "Mostafa El Nahas",
+  "Nile",
+  "Tahrir",
+  "Ramses",
+  "El Haram",
+  "Gameat El Dowal",
+  "Abbas El Akkad",
+  "El Merghany",
+  "Makram Ebeid",
+  "El Batal Ahmed Abdel Aziz",
+  "Faisal",
+  "El Nasr",
+  "Salah Salem",
+  "Port Said",
+  "El Thawra",
+  "Mostafa El Nahas",
 ];
 
 const DISTRICTS = [
-  "Nasr City", "Maadi", "Heliopolis", "Zamalek", "Dokki", "Mohandessin",
-  "Shubra", "6th of October", "New Cairo", "Agouza", "Haram", "Sheikh Zayed",
+  "Nasr City",
+  "Maadi",
+  "Heliopolis",
+  "Zamalek",
+  "Dokki",
+  "Mohandessin",
+  "Shubra",
+  "6th of October",
+  "New Cairo",
+  "Agouza",
+  "Haram",
+  "Sheikh Zayed",
 ];
 
 /**
@@ -120,18 +189,10 @@ const DISTRICTS = [
  * than a MEDIUM one, in every category.
  */
 const CATEGORIES = [
-  { name: "Plumbing", base: 150 },
-  { name: "Electrical", base: 150 },
-  { name: "Air Conditioning", base: 200 },
-  { name: "Appliance Repair", base: 180 },
-  { name: "Carpentry", base: 160 },
-  { name: "Painting", base: 140 },
-  { name: "Home Cleaning", base: 120 },
-  { name: "Pest Control", base: 200 },
-  { name: "Satellite & Antenna", base: 130 },
-  { name: "Locksmith", base: 170 },
-  { name: "Water Heaters & Gas", base: 180 },
-  { name: "Aluminium & Glass", base: 190 },
+  { name: "سباكة", base: 150 },
+  { name: "كهرباء", base: 150 },
+  { name: "نجارة", base: 160 },
+  { name: "دهانات", base: 140 },
 ];
 
 /** Multipliers on the base price, in order. Bands touch but never overlap. */
@@ -143,85 +204,78 @@ const SEVERITY_BANDS: Record<Severity, { min: number; max: number }> = {
 
 /** One realistic complaint per category, so descriptions are not lorem soup. */
 const COMPLAINTS: Record<string, string[]> = {
-  Plumbing: [
-    "Kitchen sink is leaking under the cabinet and the floor stays wet.",
-    "Bathroom drain is completely blocked, water is not going down at all.",
-    "The mixer tap drips all night even when fully closed.",
+  سباكة: [
+    "حوض المطبخ بيسرب مياه من أسفل الحوض.",
+    "بالوعة الحمام مسدودة والمياه لا تنزل.",
+    "حنفية المياه بتنقط باستمرار حتى بعد غلقها.",
   ],
-  Electrical: [
-    "The main breaker trips whenever the washing machine starts.",
-    "Two sockets in the bedroom stopped working after a power cut.",
-    "Lights in the hallway flicker and there is a burning smell.",
+
+  كهرباء: [
+    "القاطع الرئيسي بيفصل عند تشغيل الغسالة.",
+    "مقبضين كهرباء في غرفة النوم لا يعملان.",
+    "الأنوار بتقطع وفيه رائحة حرق.",
   ],
-  "Air Conditioning": [
-    "Split unit is running but blowing warm air only.",
-    "The indoor unit drips water on the wall.",
-    "AC needs a full cleaning and freon check before summer.",
+
+  نجارة: [
+    "باب دولاب المطبخ وقع من المفصلات.",
+    "باب غرفة النوم لا يغلق بشكل صحيح.",
+    "محتاج تركيب أرفف في حائط غرفة المعيشة.",
   ],
-  "Appliance Repair": [
-    "Washing machine does not spin and shows an error code.",
-    "The fridge is not cooling in the lower section.",
-    "Oven heats up then shuts down after ten minutes.",
+
+  دهانات: [
+    "حوائط غرفة المعيشة محتاجة دهان جديد.",
+    "غرفتين نوم محتاجين إعادة دهان.",
+    "السقف فيه بقع رطوبة ومحتاج معالجة ودهان.",
   ],
-  Carpentry: [
-    "Kitchen cabinet door came off its hinges.",
-    "Bedroom door does not close properly since the humidity.",
-    "Need shelves installed in the living room wall.",
+};
+
+const CATEGORY_TITLES: Record<string, string[]> = {
+  سباكة: [
+    "تسريب مياه من حوض المطبخ",
+    "انسداد بالوعة الحمام",
+    "تسريب من حنفية المياه",
+    "مشكلة في مواسير المياه",
   ],
-  Painting: [
-    "Living room walls need repainting after a water leak.",
-    "Two bedrooms need a fresh coat, walls are 4x5 metres each.",
-    "Ceiling has damp stains that need treatment then paint.",
+
+  كهرباء: [
+    "القاطع الكهربائي بيفصل",
+    "مقبس كهرباء لا يعمل",
+    "انقطاع الكهرباء في إحدى الغرف",
+    "مشكلة في الإضاءة",
   ],
-  "Home Cleaning": [
-    "Deep cleaning needed for a 3 bedroom flat after renovation.",
-    "Sofa and carpets need steam cleaning.",
-    "Post-construction dust everywhere, needs a full team.",
+
+  نجارة: [
+    "إصلاح باب دولاب المطبخ",
+    "باب غرفة النوم لا يغلق",
+    "تركيب أرفف حائط",
+    "إصلاح مفصلات الباب",
   ],
-  "Pest Control": [
-    "Cockroaches in the kitchen despite over-the-counter sprays.",
-    "Ants coming from the balcony door every morning.",
-    "Suspected bed bugs in one bedroom.",
-  ],
-  "Satellite & Antenna": [
-    "No signal on the receiver since the last storm.",
-    "Need a new dish installed and aligned on the roof.",
-    "Half of the channels disappeared after a reset.",
-  ],
-  Locksmith: [
-    "Key broke inside the main door lock.",
-    "Need the apartment lock replaced with a security one.",
-    "The door handle turns but the latch does not move.",
-  ],
-  "Water Heaters & Gas": [
-    "Gas water heater does not ignite, only clicking sound.",
-    "Hot water goes cold after two minutes.",
-    "Smell of gas near the heater, needs an urgent check.",
-  ],
-  "Aluminium & Glass": [
-    "Balcony sliding door is off its track and hard to move.",
-    "Window glass cracked and needs replacing.",
-    "Shower cabin glass door does not seal, water leaks out.",
+
+  دهانات: [
+    "دهان جديد لغرفة المعيشة",
+    "إعادة دهان غرف النوم",
+    "معالجة ودهان السقف",
+    "تجديد دهان الحوائط",
   ],
 };
 
 const CUSTOMER_COMMENTS = [
-  "Arrived on time and finished quickly, very professional.",
-  "Good work overall, but he was about half an hour late.",
-  "Explained the problem clearly before starting. Fair price.",
-  "Fixed it from the first visit, no mess left behind.",
-  "Decent job, though I expected a lower price for this.",
-  "Very polite and careful with the furniture.",
-  "Had to come back a second time, but the issue is solved now.",
-  "Excellent, would definitely request him again.",
+  "وصل في الموعد وأنهى الشغل بسرعة وباحترافية.",
+  "الشغل كان كويس بشكل عام، لكنه اتأخر حوالي نصف ساعة.",
+  "شرح المشكلة بوضوح قبل ما يبدأ، والسعر كان مناسب.",
+  "حل المشكلة من أول زيارة وساب المكان نظيف.",
+  "الشغل كان مقبول، لكن كنت متوقع سعر أقل.",
+  "كان محترم جدًا وحريص على الأثاث.",
+  "اضطر يرجع مرة تانية، لكن المشكلة اتحلت في النهاية.",
+  "ممتاز، بالتأكيد هطلبه مرة تانية.",
 ];
 
 const TECHNICIAN_COMMENTS = [
-  "Customer was cooperative and the address was easy to find.",
-  "Everything was ready when I arrived, smooth job.",
-  "Had to wait 20 minutes at the door.",
-  "Polite customer, paid immediately after the work.",
-  "The problem was bigger than described in the request.",
+  "العميل كان متعاون والعنوان كان سهل الوصول إليه.",
+  "كل شيء كان جاهز عند وصولي، والشغل تم بسلاسة.",
+  "اضطريت أستنى حوالي 20 دقيقة عند الباب.",
+  "العميل كان محترم ودفع مباشرة بعد انتهاء الشغل.",
+  "المشكلة كانت أكبر من الوصف الموجود في الطلب.",
 ];
 
 // ---------------------------------------------------------------------------
@@ -237,7 +291,8 @@ const coord = (value: number) => value.toFixed(6);
 const minutesAfter = (date: Date, minutes: number) =>
   new Date(date.getTime() + minutes * 60_000);
 
-const hoursAfter = (date: Date, hours: number) => minutesAfter(date, hours * 60);
+const hoursAfter = (date: Date, hours: number) =>
+  minutesAfter(date, hours * 60);
 
 /** Round to the nearest 10 EGP so the catalogue looks hand-written. */
 const roundTo10 = (value: number) => Math.round(value / 10) * 10;
@@ -267,8 +322,14 @@ function somewhereInEgypt() {
   return {
     city: city.name,
     address: `${faker.number.int({ min: 1, max: 140 })} ${faker.helpers.arrayElement(STREETS)} St, ${faker.helpers.arrayElement(DISTRICTS)}`,
-    latitude: coord(city.latitude + faker.number.float({ min: -0.08, max: 0.08, fractionDigits: 6 })),
-    longitude: coord(city.longitude + faker.number.float({ min: -0.08, max: 0.08, fractionDigits: 6 })),
+    latitude: coord(
+      city.latitude +
+        faker.number.float({ min: -0.08, max: 0.08, fractionDigits: 6 }),
+    ),
+    longitude: coord(
+      city.longitude +
+        faker.number.float({ min: -0.08, max: 0.08, fractionDigits: 6 }),
+    ),
   };
 }
 
@@ -331,7 +392,6 @@ const TABLES = [
   "customer_reviews",
   "technician_reviews",
   "technician_offers",
-  "ai_estimations",
   "request_attachments",
   "service_requests",
   "technician_profiles",
@@ -581,7 +641,10 @@ async function seedUsers(categories: SeededCategory[]) {
             overallRating: money(0),
             totalReviews: 0,
             createdAt,
-            updatedAt: hoursAfter(createdAt, faker.number.int({ min: 1, max: 72 })),
+            updatedAt: hoursAfter(
+              createdAt,
+              faker.number.int({ min: 1, max: 72 }),
+            ),
           },
         },
       },
@@ -629,7 +692,8 @@ async function seedOtps(users: SeededUser[], pendingUsers: SeededUser[]) {
     createdAt: Date;
   }[] = [];
 
-  const code = () => faker.string.numeric({ length: 6, allowLeadingZeros: true });
+  const code = () =>
+    faker.string.numeric({ length: 6, allowLeadingZeros: true });
 
   // The code each existing user signed up with: verified, long expired.
   for (const user of users) {
@@ -720,21 +784,24 @@ async function seedServiceRequests(
   technicians: SeededTechnician[],
   categories: SeededCategory[],
 ) {
-  // Only a verified technician can be offered work, so index those by category.
+  // Only verified technicians can receive offers.
   const byCategory = new Map<string, SeededTechnician[]>();
+
   for (const technician of technicians) {
     if (!technician.verified) continue;
+
     const key = technician.categoryId.toString();
+
     byCategory.set(key, [...(byCategory.get(key) ?? []), technician]);
   }
 
   const counts = {
     requests: 0,
     attachments: 0,
-    estimations: 0,
     offers: 0,
     customerReviews: 0,
     technicianReviews: 0,
+    aiRequests: 0,
   };
 
   for (const customer of customers) {
@@ -742,26 +809,43 @@ async function seedServiceRequests(
 
     for (let index = 0; index < howMany; index += 1) {
       const category = faker.helpers.arrayElement(categories);
+
       const candidates = byCategory.get(category.id.toString()) ?? [];
 
       let status = faker.helpers.weightedArrayElement(STATUS_WEIGHTS);
 
-      // No verified technician in this category yet? Then nobody could have
-      // been offered the job - the request can only be sitting at PENDING.
-      if (candidates.length === 0) status = RequestStatus.PENDING;
+      // If there are no verified technicians for this
+      // category, the request must remain pending.
+      if (candidates.length === 0) {
+        status = RequestStatus.PENDING;
+      }
 
       const assigned = ASSIGNED_STATUSES.includes(status);
+
       const requestType = faker.helpers.weightedArrayElement([
-        { value: RequestType.AI_ESTIMATION, weight: 55 },
-        { value: RequestType.HOME_VISIT, weight: 45 },
+        {
+          value: RequestType.AI_ESTIMATION,
+          weight: 55,
+        },
+        {
+          value: RequestType.CONSULTATION,
+          weight: 45,
+        },
       ]);
 
-      // The request is filed at the customer's own address most of the time,
-      // but sometimes somewhere else (a relative's flat, a second home).
+      // ---------------------------------------------------------
+      // LOCATION
+      // ---------------------------------------------------------
+
       const place = faker.datatype.boolean(0.75)
         ? {
             city: customer.city,
-            address: `${faker.number.int({ min: 1, max: 140 })} ${faker.helpers.arrayElement(STREETS)} St, ${faker.helpers.arrayElement(DISTRICTS)}`,
+            address: `${faker.number.int({
+              min: 1,
+              max: 140,
+            })} ${faker.helpers.arrayElement(
+              STREETS,
+            )} St, ${faker.helpers.arrayElement(DISTRICTS)}`,
             latitude: customer.latitude,
             longitude: customer.longitude,
           }
@@ -772,193 +856,447 @@ async function seedServiceRequests(
         to: new Date(),
       });
 
-      // A home visit is charged by distance on top of the category's call-out
-      // fee; an AI estimation never leaves the app, so it has neither.
+      // ---------------------------------------------------------
+      // HOME VISIT / DISTANCE
+      // ---------------------------------------------------------
+
+      // Consultation requires a technician visit.
+      // AI estimation/classification does not.
       const distanceKm =
-        requestType === RequestType.HOME_VISIT
-          ? faker.number.float({ min: 0.8, max: 28, fractionDigits: 2 })
+        requestType === RequestType.CONSULTATION
+          ? faker.number.float({
+              min: 0.8,
+              max: 28,
+              fractionDigits: 2,
+            })
           : null;
+
       const visitFee =
         distanceKm === null
           ? null
           : category.homeVisitBasePrice + Math.max(0, distanceKm - 5) * 12;
 
-      // Severity drives every price on this request, so pick it once.
-      const severity = faker.helpers.weightedArrayElement([
-        { value: Severity.SMALL, weight: 45 },
-        { value: Severity.MEDIUM, weight: 38 },
-        { value: Severity.LARGE, weight: 17 },
-      ]);
-      const band = category.bands[severity];
+      // ---------------------------------------------------------
+      // ACTUAL SEVERITY
+      // ---------------------------------------------------------
 
-      // The AI's guess: a window inside the category's own band, never wider.
-      const estimateMin = faker.number.int({
-        min: band.min,
-        max: Math.round(band.min + (band.max - band.min) * 0.4),
-      });
-      const estimateMax = faker.number.int({
-        min: Math.round(estimateMin + (band.max - estimateMin) * 0.25),
-        max: band.max,
-      });
+      // The real severity of the problem.
+      const actualSeverity =
+        requestType === RequestType.AI_ESTIMATION
+          ? faker.helpers.weightedArrayElement([
+              {
+                value: Severity.SMALL,
+                weight: 45,
+              },
+              {
+                value: Severity.MEDIUM,
+                weight: 38,
+              },
+              {
+                value: Severity.LARGE,
+                weight: 17,
+              },
+            ])
+          : null;
+
+      // ---------------------------------------------------------
+      // AI SEVERITY
+      // ---------------------------------------------------------
+
+      // AI predicts ONLY severity.
+      // It does NOT predict price.
+      const aiSeverity =
+        requestType === RequestType.AI_ESTIMATION
+          ? faker.helpers.weightedArrayElement([
+              {
+                value: Severity.SMALL,
+                weight: 45,
+              },
+              {
+                value: Severity.MEDIUM,
+                weight: 38,
+              },
+              {
+                value: Severity.LARGE,
+                weight: 17,
+              },
+            ])
+          : null;
+
+      // ---------------------------------------------------------
+      // ACTUAL PAID PRICE
+      // ---------------------------------------------------------
+
+      // Price is NOT generated by AI.
+      //
+      // For AI requests:
+      //   actual price is based on the REAL severity.
+      //
+      // For consultations:
+      //   actual price is based on severity + visit fee.
+      //
+      // The AI only tells us SMALL / MEDIUM / LARGE.
+
+      let actualPaidPrice: number | null = null;
+
+      if (requestType === RequestType.AI_ESTIMATION && actualSeverity) {
+        const actualBand = category.bands[actualSeverity];
+
+        actualPaidPrice = faker.number.int({
+          min: actualBand.min,
+          max: actualBand.max,
+        });
+      } else if (requestType === RequestType.CONSULTATION) {
+        const consultationSeverity = faker.helpers.weightedArrayElement([
+          {
+            value: Severity.SMALL,
+            weight: 45,
+          },
+          {
+            value: Severity.MEDIUM,
+            weight: 38,
+          },
+          {
+            value: Severity.LARGE,
+            weight: 17,
+          },
+        ]);
+
+        const consultationBand = category.bands[consultationSeverity];
+
+        actualPaidPrice =
+          faker.number.int({
+            min: consultationBand.min,
+            max: consultationBand.max,
+          }) + (visitFee ?? 0);
+      }
+
+      // ---------------------------------------------------------
+      // SELECTED TECHNICIAN
+      // ---------------------------------------------------------
 
       const selected = assigned ? faker.helpers.arrayElement(candidates) : null;
 
-      // Offers: everyone except a brand new PENDING request has been shown to
-      // some technicians. Sampling without replacement keeps the unique
-      // (service_request_id, technician_id) happy.
-      const others = candidates.filter((tech) => tech.id !== selected?.id);
+      // ---------------------------------------------------------
+      // OFFERS
+      // ---------------------------------------------------------
+
+      const others = candidates.filter(
+        (technician) => technician.id !== selected?.id,
+      );
+
       const offereeCount =
         status === RequestStatus.PENDING
           ? 0
           : faker.number.int({
-              // "Waiting for a technician" with nobody to wait on would be a
-              // dead end, so those requests always carry at least one offer.
               min:
                 !selected && status === RequestStatus.WAITING_FOR_TECHNICIAN
                   ? Math.min(1, others.length)
                   : 0,
+
               max: Math.min(3, others.length),
             });
+
       const offerees = faker.helpers.arrayElements(others, offereeCount);
 
       const offers = [
-        // Exactly one SELECTED offer on an assigned request - that is the
-        // technician the customer picked.
+        // Exactly one SELECTED offer for
+        // an assigned request.
         ...(selected
           ? [
               {
                 technicianId: selected.id,
+
                 status: OfferStatus.SELECTED,
-                acceptedAt: minutesAfter(createdAt, faker.number.int({ min: 3, max: 40 })),
+
+                acceptedAt: minutesAfter(
+                  createdAt,
+                  faker.number.int({
+                    min: 3,
+                    max: 40,
+                  }),
+                ),
+
                 createdAt: minutesAfter(createdAt, 2),
+
                 updatedAt: minutesAfter(createdAt, 45),
               },
             ]
           : []),
+
         ...offerees.map((technician) => {
           const offerStatus = selected
             ? OfferStatus.NOT_SELECTED
             : faker.helpers.weightedArrayElement([
-                { value: OfferStatus.PENDING, weight: 45 },
-                { value: OfferStatus.ACCEPTED, weight: 35 },
-                { value: OfferStatus.DECLINED, weight: 20 },
+                {
+                  value: OfferStatus.PENDING,
+                  weight: 45,
+                },
+                {
+                  value: OfferStatus.ACCEPTED,
+                  weight: 35,
+                },
+                {
+                  value: OfferStatus.DECLINED,
+                  weight: 20,
+                },
               ]);
 
           const offerCreatedAt = minutesAfter(
             createdAt,
-            faker.number.int({ min: 1, max: 30 }),
+            faker.number.int({
+              min: 1,
+              max: 30,
+            }),
           );
 
           return {
             technicianId: technician.id,
+
             status: offerStatus,
+
             acceptedAt:
               offerStatus === OfferStatus.ACCEPTED
-                ? minutesAfter(offerCreatedAt, faker.number.int({ min: 1, max: 20 }))
+                ? minutesAfter(
+                    offerCreatedAt,
+                    faker.number.int({
+                      min: 1,
+                      max: 20,
+                    }),
+                  )
                 : null,
+
             createdAt: offerCreatedAt,
+
             updatedAt: offerCreatedAt,
           };
         }),
       ];
 
-      const finishedAt = hoursAfter(createdAt, faker.number.int({ min: 2, max: 96 }));
+      // ---------------------------------------------------------
+      // REVIEWS
+      // ---------------------------------------------------------
+
+      const finishedAt = hoursAfter(
+        createdAt,
+        faker.number.int({
+          min: 2,
+          max: 96,
+        }),
+      );
+
       const completed = status === RequestStatus.COMPLETED;
-      // Not every finished job gets rated - about a fifth are never reviewed.
+
       const reviewed = completed && faker.datatype.boolean(0.8);
 
-      const punctuality = faker.number.int({ min: 3, max: 5 });
-      const serviceQuality = faker.number.int({ min: 3, max: 5 });
-      const professionalism = faker.number.int({ min: 3, max: 5 });
-      const priceFairness = faker.number.int({ min: 2, max: 5 });
+      const punctuality = faker.number.int({
+        min: 3,
+        max: 5,
+      });
 
-      // What the customer actually handed over: inside the estimate for an AI
-      // request, inside the band plus the call-out fee for a home visit.
-      const actualPaidPrice =
-        requestType === RequestType.AI_ESTIMATION
-          ? faker.number.int({ min: estimateMin, max: estimateMax })
-          : faker.number.int({ min: band.min, max: band.max }) + (visitFee ?? 0);
+      const serviceQuality = faker.number.int({
+        min: 3,
+        max: 5,
+      });
 
-      const attachmentCount = faker.number.int({ min: 0, max: 3 });
+      const professionalism = faker.number.int({
+        min: 3,
+        max: 5,
+      });
 
-      const request = await prisma.serviceRequest.create({
+      const priceFairness = faker.number.int({
+        min: 2,
+        max: 5,
+      });
+
+      const attachmentCount = faker.number.int({
+        min: 0,
+        max: 3,
+      });
+
+      // Decide once whether a technician review
+      // will be created.
+      const technicianReviewCreated =
+        reviewed && !!selected && faker.datatype.boolean(0.6);
+
+      // ---------------------------------------------------------
+      // CREATE SERVICE REQUEST
+      // ---------------------------------------------------------
+
+      await prisma.serviceRequest.create({
         data: {
           customerId: customer.id,
+
           technicianId: selected?.id ?? null,
+
           categoryId: category.id,
+
           requestType,
+
+          title: faker.helpers.arrayElement(
+            CATEGORY_TITLES[category.name] ?? ["Home service request"],
+          ),
+
           description: faker.helpers.arrayElement(
             COMPLAINTS[category.name] ?? [faker.lorem.sentence()],
           ),
+
           serviceAddress: place.address,
+
           serviceCity: place.city,
+
           serviceLatitude: place.latitude,
+
           serviceLongitude: place.longitude,
+
           distanceKm: distanceKm === null ? null : money(distanceKm),
+
           visitFee: visitFee === null ? null : money(visitFee),
+
           status,
+
+          // -------------------------------------------------
+          // AI DATA
+          // -------------------------------------------------
+
+          // AI request identifier.
+          aiRequestId:
+            requestType === RequestType.AI_ESTIMATION
+              ? faker.string.uuid()
+              : null,
+
+          // AI predicts severity only.
+          aiSeverity,
+
+          // Confidence of the AI severity prediction.
+          aiConfidence:
+            requestType === RequestType.AI_ESTIMATION
+              ? money(
+                  faker.number.float({
+                    min: 61,
+                    max: 99,
+                    fractionDigits: 2,
+                  }),
+                )
+              : null,
+
+          // Some AI predictions require manual review.
+          aiNeedsReview:
+            requestType === RequestType.AI_ESTIMATION
+              ? faker.datatype.boolean(0.15)
+              : false,
+
+          // Real severity of the problem.
+          actualSeverity,
+
           createdAt,
+
           updatedAt: completed ? finishedAt : hoursAfter(createdAt, 1),
 
+          // -------------------------------------------------
+          // ATTACHMENTS
+          // -------------------------------------------------
+
           attachments: {
-            create: Array.from({ length: attachmentCount }, () => ({
-              imageUrl: uploadPath("issue", faker.helpers.arrayElement(["jpg", "png"])),
-              createdAt,
-            })),
+            create: Array.from(
+              {
+                length: attachmentCount,
+              },
+              () => ({
+                imageUrl: uploadPath(
+                  "issue",
+                  faker.helpers.arrayElement(["jpg", "png"]),
+                ),
+
+                createdAt,
+              }),
+            ),
           },
 
-          // Only an AI_ESTIMATION request has an estimation row.
-          ...(requestType === RequestType.AI_ESTIMATION
+          // -------------------------------------------------
+          // TECHNICIAN OFFERS
+          // -------------------------------------------------
+
+          ...(offers.length > 0
             ? {
-                aiEstimation: {
-                  create: {
-                    severity,
-                    minPrice: money(estimateMin),
-                    maxPrice: money(estimateMax),
-                    confidence: money(
-                      faker.number.float({ min: 61, max: 99, fractionDigits: 2 }),
-                    ),
-                    createdAt: minutesAfter(createdAt, 1),
-                  },
+                offers: {
+                  create: offers,
                 },
               }
             : {}),
 
-          ...(offers.length > 0 ? { offers: { create: offers } } : {}),
+          // -------------------------------------------------
+          // REVIEWS
+          // -------------------------------------------------
 
           ...(reviewed && selected
             ? {
                 customerReview: {
                   create: {
                     customerId: customer.id,
+
                     technicianId: selected.id,
-                    actualPaidPrice: money(actualPaidPrice),
+
+                    // Required by CustomerReview
+                    // in the Prisma schema.
+                    actualPaidPrice: money(actualPaidPrice ?? 0),
+
                     punctuality,
+
                     serviceQuality,
+
                     professionalism,
+
                     priceFairness,
-                    // The headline rating is the average of the four scores.
+
                     rating: money(
-                      (punctuality + serviceQuality + professionalism + priceFairness) / 4,
+                      (punctuality +
+                        serviceQuality +
+                        professionalism +
+                        priceFairness) /
+                        4,
                     ),
+
                     comment: faker.datatype.boolean(0.7)
                       ? faker.helpers.arrayElement(CUSTOMER_COMMENTS)
                       : null,
-                    createdAt: hoursAfter(finishedAt, faker.number.int({ min: 1, max: 48 })),
+
+                    createdAt: hoursAfter(
+                      finishedAt,
+                      faker.number.int({
+                        min: 1,
+                        max: 48,
+                      }),
+                    ),
                   },
                 },
-                // The technician rates the customer back, but less often.
-                ...(faker.datatype.boolean(0.6)
+
+                // Technician rates the customer
+                // back less often.
+                ...(technicianReviewCreated
                   ? {
                       technicianReview: {
                         create: {
                           technicianId: selected.id,
+
                           customerId: customer.id,
-                          rating: faker.number.int({ min: 3, max: 5 }),
+
+                          rating: faker.number.int({
+                            min: 3,
+                            max: 5,
+                          }),
+
                           comment: faker.datatype.boolean(0.5)
                             ? faker.helpers.arrayElement(TECHNICIAN_COMMENTS)
                             : null,
-                          createdAt: hoursAfter(finishedAt, faker.number.int({ min: 1, max: 24 })),
+
+                          createdAt: hoursAfter(
+                            finishedAt,
+                            faker.number.int({
+                              min: 1,
+                              max: 24,
+                            }),
+                          ),
                         },
                       },
                     }
@@ -966,15 +1304,29 @@ async function seedServiceRequests(
               }
             : {}),
         },
-        select: { id: true, technicianReview: { select: { id: true } } },
       });
 
+      // ---------------------------------------------------------
+      // COUNTS
+      // ---------------------------------------------------------
+
       counts.requests += 1;
+
       counts.attachments += attachmentCount;
+
       counts.offers += offers.length;
-      if (requestType === RequestType.AI_ESTIMATION) counts.estimations += 1;
-      if (reviewed && selected) counts.customerReviews += 1;
-      if (request.technicianReview) counts.technicianReviews += 1;
+
+      if (requestType === RequestType.AI_ESTIMATION) {
+        counts.aiRequests += 1;
+      }
+
+      if (reviewed && selected) {
+        counts.customerReviews += 1;
+      }
+
+      if (technicianReviewCreated) {
+        counts.technicianReviews += 1;
+      }
     }
   }
 
@@ -1015,7 +1367,10 @@ async function rollUpTechnicianRatings() {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  if (process.env["NODE_ENV"] === "production" && !process.argv.includes("--force")) {
+  if (
+    process.env["NODE_ENV"] === "production" &&
+    !process.argv.includes("--force")
+  ) {
     throw new Error(
       "Refusing to seed with NODE_ENV=production - this deletes every row. Pass --force if you really mean it.",
     );
@@ -1027,9 +1382,12 @@ async function main() {
   await resetDatabase();
 
   const categories = await seedCategories();
-  console.log(`  categories            ${categories.length} (+ ${categories.length * 3} pricing rows)`);
+  console.log(
+    `  categories            ${categories.length} (+ ${categories.length * 3} pricing rows)`,
+  );
 
-  const { admins, customers, technicians, pendingUsers } = await seedUsers(categories);
+  const { admins, customers, technicians, pendingUsers } =
+    await seedUsers(categories);
   console.log(
     `  users                 ${admins.length + customers.length + technicians.length + pendingUsers.length + CONFIG.techniciansWithoutDocuments}` +
       ` (${admins.length} admin, ${customers.length} customer, ${technicians.length + CONFIG.techniciansWithoutDocuments} technician, ${pendingUsers.length} pending)`,
@@ -1044,7 +1402,6 @@ async function main() {
   const counts = await seedServiceRequests(customers, technicians, categories);
   console.log(`  service_requests      ${counts.requests}`);
   console.log(`  request_attachments   ${counts.attachments}`);
-  console.log(`  ai_estimations        ${counts.estimations}`);
   console.log(`  technician_offers     ${counts.offers}`);
   console.log(`  customer_reviews      ${counts.customerReviews}`);
   console.log(`  technician_reviews    ${counts.technicianReviews}`);
@@ -1052,7 +1409,9 @@ async function main() {
   const rated = await rollUpTechnicianRatings();
   console.log(`  ratings rolled up     ${rated} technician profile(s)`);
 
-  console.log(`\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s. Fixed accounts:`);
+  console.log(
+    `\nDone in ${((Date.now() - startedAt) / 1000).toFixed(1)}s. Fixed accounts:`,
+  );
   console.log(`  admin       ${FIXTURES.admin}`);
   console.log(`  customer    ${FIXTURES.customer}`);
   console.log(`  technician  ${FIXTURES.technician}  (verified)`);
