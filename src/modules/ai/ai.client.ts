@@ -45,9 +45,20 @@ import { ApiError } from "../../core/errors.js";
  *     service: nothing fetches them. Worth telling the customer the photo is
  *     for the technician, not the estimate.
  *
- * `request_id` is theirs. It keys the row the service writes into its own
- * prediction log (the `prediction-logs` volume in the AI compose file), so
- * storing it is what makes a disputed severity traceable later.
+ * `request_id` is theirs. Every successful prediction is appended as one row to
+ * `logs/prediction_logs.csv` on their side (the `prediction-logs` volume in the
+ * AI compose file), keyed by it. Their own note on that file says the row is
+ * meant to be "matched back to the technician's actual severity using
+ * request_id" - which is exactly the pair `ai_request_id` and `actual_severity`
+ * hold on our side. Storing the id is what makes the retraining set joinable at
+ * all, and what makes a disputed severity traceable.
+ *
+ * **There is no authentication.** The service has no token, no api key and no
+ * dependency guarding `/predict` - anything that can reach the port can call
+ * it. That is why the AI compose file binds it to `127.0.0.1` and expects a
+ * reverse proxy in front. Do not invent an `AI_SERVICE_TOKEN`: there is nothing
+ * on the other side to check it. If this is ever exposed beyond localhost, the
+ * auth has to be added there first, and this file gets the header then.
  *
  * **The AI does not price anything.** It returns a severity we can audit and
  * correct; the money is read out of the pricing table by the service.
@@ -70,8 +81,8 @@ export type AiEstimateResult = {
  * TASK 8 - ask the model to size up a problem.
  *
  * TODO(task 8):
- *   - POST to `${AI_SERVICE_URL}/predict` with `Authorization: Bearer
- *     ${AI_SERVICE_TOKEN}` and `signal: AbortSignal.timeout(AI_TIMEOUT_MS)`.
+ *   - POST to `${AI_SERVICE_URL}/predict` with `signal:
+ *     AbortSignal.timeout(AI_TIMEOUT_MS)`. No auth header - see above.
  *   - **Parse the response with zod before returning it.** This is somebody
  *     else's service: a `severity` of "medium" or "HUGE" has to become our 503,
  *     not a Prisma enum crash three lines later. `request_id` is a uuid and the
@@ -81,6 +92,12 @@ export type AiEstimateResult = {
  *   - Any failure at all - timeout, non-200, unparseable body - becomes
  *     `ApiError.serviceUnavailable(messages.ai.unavailable)`. Never a 500, and
  *     never a charge: the caller only spends points after this returns.
+ *   - **Log a 400 loudly before converting it.** They answer 400 for exactly two
+ *     things, and both are our fault, not an outage: a category their
+ *     `CATEGORY_MAP` does not have, and an empty description. The categories are
+ *     seeded to match theirs, so a 400 means the two lists have drifted - which
+ *     the customer cannot fix and nobody will notice if it is filed under "the
+ *     AI is down". The customer still gets the 503 and still keeps their points.
  *   - With no `AI_SERVICE_URL` configured, return a **deterministic stub**:
  *     hash the description into a severity, confidence 0.5, `needsReview: true`,
  *     a stable fake uuid, and log that it is a stub - exactly the way
