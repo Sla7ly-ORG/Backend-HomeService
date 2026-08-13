@@ -239,10 +239,30 @@ model ServiceRequest {
   visitFee         Decimal?      @map("visit_fee") @db.Decimal(10, 2)
   status           RequestStatus @default(PENDING)
 
-  aiRequestId    String?   @map("ai_request_id") @db.VarChar(255)
+  // The AI's answer, inlined rather than kept in an `ai_estimations` side table.
+  // It is at most one prediction per request and every column is read on the
+  // same screen as the request itself, so the join bought nothing. All nullable:
+  // a CONSULTATION never asks the model, and an AI_ESTIMATION has no answer
+  // until the customer spends the points.
+  //
+  // `aiRequestId` is the model's own uuid for the prediction. We do not generate
+  // it and never look it up - it is there so a disputed severity can be traced
+  // to the row the AI service wrote in its prediction log.
+  aiRequestId    String?   @map("ai_request_id") @db.Uuid
   aiSeverity     Severity? @map("ai_severity")
-  aiConfidence   Decimal?  @map("ai_confidence") @db.Decimal(5, 2)
-  aiNeedsReview  Boolean   @default(false) @map("ai_needs_review")
+  // 0..1, as the service returns it. Four decimals because it sends four -
+  // Decimal(5,2) would round 0.3789 to 0.38, and the threshold the model flags
+  // on lives in exactly that range.
+  aiConfidence   Decimal?  @map("ai_confidence") @db.Decimal(5, 4)
+  // The model's own flag, not ours - it decides when it was too unsure to be
+  // trusted alone. Set from the response, never computed here. **Nullable, not
+  // `false`**: a CONSULTATION never asked, and "nobody asked" is not the same
+  // answer as "the model was confident".
+  aiNeedsReview  Boolean?  @map("ai_needs_review")
+  // What the severity turned out to be once a human knew. Written by a review,
+  // stays null when nobody corrected anything, and is the label the model is
+  // retrained on - so it must never be defaulted to `aiSeverity`, or the
+  // training set becomes the model agreeing with itself.
   actualSeverity Severity? @map("actual_severity")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -262,6 +282,10 @@ model ServiceRequest {
   @@index([technicianId])
   @@index([status])
   @@index([categoryId])
+  // The review queue: "predictions the model flagged that nobody has judged
+  // yet". Both columns are null on every CONSULTATION row, and Postgres does
+  // not index nulls in a btree, so this stays small.
+  @@index([aiNeedsReview, actualSeverity])
   @@map("service_requests")
 }
 
@@ -282,7 +306,7 @@ model RequestAttachment {
 }
 
 // ---------------------------------------------------------------------------
-// 8. technician_offers 
+// 8. technician_offers
 // ---------------------------------------------------------------------------
 
 model TechnicianOffer {

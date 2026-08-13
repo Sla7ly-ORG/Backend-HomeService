@@ -890,11 +890,14 @@ async function seedServiceRequests(
           : category.homeVisitBasePrice + Math.max(0, distanceKm - 5) * 12;
 
       // ---------------------------------------------------------
-      // ACTUAL SEVERITY
+      // TRUE SEVERITY
       // ---------------------------------------------------------
 
-      // The real severity of the problem.
-      const actualSeverity =
+      // What the problem really was. This is not a column - it is the fact the
+      // rest of the row is generated from, the way reality is the thing the
+      // model is trying to guess. It always exists for an AI request; whether
+      // anyone ever *wrote it down* is a separate question, below.
+      const trueSeverity =
         requestType === RequestType.AI_ESTIMATION
           ? faker.helpers.weightedArrayElement([
               {
@@ -937,6 +940,36 @@ async function seedServiceRequests(
           : null;
 
       // ---------------------------------------------------------
+      // AI CONFIDENCE, REVIEW FLAG, RECORDED SEVERITY
+      // ---------------------------------------------------------
+
+      // The service's own 0..1 scale, four decimals because it reports four.
+      // It flags anything it is not sure about, so `needsReview` is derived
+      // from the number rather than drawn separately - that is what makes a
+      // seeded row look like a row from its prediction log.
+      const aiConfidence =
+        requestType === RequestType.AI_ESTIMATION
+          ? faker.number.float({ min: 0.31, max: 0.99, fractionDigits: 4 })
+          : null;
+
+      const aiNeedsReview =
+        aiConfidence === null ? null : aiConfidence < 0.5;
+
+      // `actual_severity` means *a human wrote down what it turned out to be*,
+      // and most requests never get that far. Recording it on every row would
+      // leave the review queue permanently empty and teach whoever builds it
+      // that the state never occurs - so only completed jobs, and only some of
+      // those, carry one. The model being wrong is the interesting case, and it
+      // survives here because `aiSeverity` was drawn independently of
+      // `trueSeverity`.
+      const reviewedByHuman =
+        trueSeverity !== null &&
+        status === RequestStatus.COMPLETED &&
+        faker.datatype.boolean(aiNeedsReview ? 0.7 : 0.25);
+
+      const actualSeverity = reviewedByHuman ? trueSeverity : null;
+
+      // ---------------------------------------------------------
       // ACTUAL PAID PRICE
       // ---------------------------------------------------------
 
@@ -952,8 +985,8 @@ async function seedServiceRequests(
 
       let actualPaidPrice: number | null = null;
 
-      if (requestType === RequestType.AI_ESTIMATION && actualSeverity) {
-        const actualBand = category.bands[actualSeverity];
+      if (requestType === RequestType.AI_ESTIMATION && trueSeverity) {
+        const actualBand = category.bands[trueSeverity];
 
         actualPaidPrice = faker.number.int({
           min: actualBand.min,
@@ -1180,25 +1213,22 @@ async function seedServiceRequests(
           // AI predicts severity only.
           aiSeverity,
 
-          // Confidence of the AI severity prediction.
-          aiConfidence:
-            requestType === RequestType.AI_ESTIMATION
-              ? money(
-                  faker.number.float({
-                    min: 61,
-                    max: 99,
-                    fractionDigits: 2,
-                  }),
-                )
-              : null,
+          // Confidence of the AI severity prediction, on the service's own
+          // **0..1** scale - not a percentage. `money()` is deliberately not
+          // used: it rounds to 2dp, and the column is Decimal(5,4) because the
+          // service reports four. A 0-100 number here would not just be wrong,
+          // it would overflow the column.
+          aiConfidence,
 
-          // Some AI predictions require manual review.
-          aiNeedsReview:
-            requestType === RequestType.AI_ESTIMATION
-              ? faker.datatype.boolean(0.15)
-              : false,
+          // Not an independent coin flip: the real service raises this when its
+          // own confidence is low, so deriving it from the number is what makes
+          // the seeded rows look like its prediction log. Null on a
+          // consultation - nobody asked the model, which is a different fact
+          // from the model having been sure.
+          aiNeedsReview,
 
-          // Real severity of the problem.
+          // What the severity turned out to be **once a human checked**. Null
+          // until then, so the review queue has something in it - see above.
           actualSeverity,
 
           createdAt,
