@@ -41,8 +41,12 @@ enum VerificationStatus {
 // Both branches collect a photo and a description, and both end up published
 // the same way. The type only decides whether an estimate is required first,
 // and what the technician's card has room to show.
+//
+// What 50 points buys on the AI screen is a severity, and the price band that
+// severity maps to in `category_pricing`. The model writes no prose and does
+// not look at the photo - see src/modules/ai/ai.client.ts.
 enum RequestType {
-  AI_ESTIMATION // the AI screen: 50 points buys a severity and a summary
+  AI_ESTIMATION // 50 points, an estimate first
   CONSULTATION  // straight to the technicians, no AI, no charge
 }
 
@@ -88,22 +92,22 @@ enum PointsTransactionType {
 //   ACTIVE   profile complete, can use the app
 //   BLOCKED / SUSPENDED  moderation
 model User {
-  id        BigInt     @id @default(autoincrement())
-  fullName  String?    @map("full_name") @db.VarChar(100)
-  phone     String     @unique @db.VarChar(20)
+  id       BigInt  @id @default(autoincrement())
+  fullName String? @map("full_name") @db.VarChar(100)
+  phone    String  @unique @db.VarChar(20)
 
-  role       UserRole   @default(CUSTOMER)
-  city       String?    @db.VarChar(100)
-  address    String?    @db.Text
-  latitude   Decimal?   @db.Decimal(10, 8)
-  longitude  Decimal?   @db.Decimal(11, 8)
-  status     UserStatus @default(PENDING)
+  role      UserRole   @default(CUSTOMER)
+  city      String?    @db.VarChar(100)
+  address   String?    @db.Text
+  latitude  Decimal?   @db.Decimal(10, 8)
+  longitude Decimal?   @db.Decimal(11, 8)
+  status    UserStatus @default(PENDING)
 
   pointsBalance Int @default(0) @map("points_balance")
 
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt  DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   // =========================
   // Relations
@@ -114,19 +118,18 @@ model User {
   requestsAsCustomer   ServiceRequest[] @relation("RequestCustomer")
   requestsAsTechnician ServiceRequest[] @relation("RequestTechnician")
 
+  technicianOffers   TechnicianOffer[]
   pointsTransactions PointsTransaction[]
-  technicianOffers TechnicianOffer[]
 
-  customerReviewsWritten CustomerReview[] @relation("CustomerReviewAuthor")
+  customerReviewsWritten  CustomerReview[] @relation("CustomerReviewAuthor")
   customerReviewsReceived CustomerReview[] @relation("CustomerReviewSubject")
 
-  technicianReviewsWritten TechnicianReview[] @relation("TechnicianReviewAuthor")
+  technicianReviewsWritten  TechnicianReview[] @relation("TechnicianReviewAuthor")
   technicianReviewsReceived TechnicianReview[] @relation("TechnicianReviewSubject")
 
   @@index([role])
   @@index([status])
   @@index([createdAt])
-
   @@map("users")
 }
 
@@ -135,14 +138,14 @@ model User {
 // ---------------------------------------------------------------------------
 
 model Otp {
-  id         BigInt    @id @default(autoincrement())
-  phone      String    @db.VarChar(20)
-  otpCode    String    @map("otp_code") @db.VarChar(10)
-  attempts   Int       @default(0)
+  id           BigInt    @id @default(autoincrement())
+  phone        String    @db.VarChar(20)
+  otpCode      String    @map("otp_code") @db.VarChar(10)
+  attempts     Int       @default(0)
   blockedUntil DateTime? @map("blocked_until")
-  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
-  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  verifiedAt   DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([phone, createdAt])
   @@map("otp")
@@ -226,8 +229,10 @@ model ServiceRequest {
   technicianId     BigInt?       @map("technician_id")
   categoryId       BigInt        @map("category_id")
   requestType      RequestType   @map("request_type")
+
   // The AI takes a title and a photo, and the past-orders list needs one line
   // to show; `description` is the paragraph underneath it.
+
   title            String        @db.VarChar(120)
   description      String        @db.Text
   serviceAddress   String        @map("service_address") @db.Text
@@ -237,24 +242,54 @@ model ServiceRequest {
   distanceKm       Decimal?      @map("distance_km") @db.Decimal(10, 2)
   visitFee         Decimal?      @map("visit_fee") @db.Decimal(10, 2)
   status           RequestStatus @default(PENDING)
-  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // The AI's answer, inlined rather than kept in an `ai_estimations` side table.
+  // It is at most one prediction per request and every column is read on the
+  // same screen as the request itself, so the join bought nothing. All nullable:
+  // a CONSULTATION never asks the model, and an AI_ESTIMATION has no answer
+  // until the customer spends the points.
+  //
+  // `aiRequestId` is the model's own uuid for the prediction. We do not generate
+  // it and never look it up - it is there so a disputed severity can be traced
+  // to the row the AI service wrote in its prediction log.
+  aiRequestId    String?   @map("ai_request_id") @db.Uuid
+  aiSeverity     Severity? @map("ai_severity")
+  // 0..1, as the service returns it. Four decimals because it sends four -
+  // Decimal(5,2) would round 0.3789 to 0.38, and the threshold the model flags
+  // on lives in exactly that range.
+  aiConfidence   Decimal?  @map("ai_confidence") @db.Decimal(5, 4)
+  // The model's own flag, not ours - it decides when it was too unsure to be
+  // trusted alone. Set from the response, never computed here. **Nullable, not
+  // `false`**: a CONSULTATION never asked, and "nobody asked" is not the same
+  // answer as "the model was confident".
+  aiNeedsReview  Boolean?  @map("ai_needs_review")
+  // What the severity turned out to be once a human knew. Written by a review,
+  // stays null when nobody corrected anything, and is the label the model is
+  // retrained on - so it must never be defaulted to `aiSeverity`, or the
+  // training set becomes the model agreeing with itself.
+  actualSeverity Severity? @map("actual_severity")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   customer   User     @relation("RequestCustomer", fields: [customerId], references: [id], onDelete: Restrict)
   technician User?    @relation("RequestTechnician", fields: [technicianId], references: [id], onDelete: SetNull)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
-  attachments      RequestAttachment[]
-  aiEstimation     AiEstimation?
-  offers           TechnicianOffer[]
+  attachments        RequestAttachment[]
+  offers             TechnicianOffer[]
   pointsTransactions PointsTransaction[]
-  customerReview   CustomerReview?
-  technicianReview TechnicianReview?
+  customerReview     CustomerReview?
+  technicianReview   TechnicianReview?
 
   @@index([customerId])
   @@index([technicianId])
   @@index([status])
   @@index([categoryId])
+  // The review queue: "predictions the model flagged that nobody has judged
+  // yet". Both columns are null on every CONSULTATION row, and Postgres does
+  // not index nulls in a btree, so this stays small.
+  @@index([aiNeedsReview, actualSeverity])
   @@map("service_requests")
 }
 
@@ -275,25 +310,7 @@ model RequestAttachment {
 }
 
 // ---------------------------------------------------------------------------
-// 8. ai_estimations 
-// ---------------------------------------------------------------------------
-
-model AiEstimation {
-  id               BigInt   @id @default(autoincrement())
-  serviceRequestId BigInt   @unique @map("service_request_id")
-  severity         Severity
-  minPrice         Decimal  @map("min_price") @db.Decimal(10, 2)
-  maxPrice         Decimal  @map("max_price") @db.Decimal(10, 2)
-  confidence       Decimal  @db.Decimal(5, 2)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
-
-  @@map("ai_estimations")
-}
-
-// ---------------------------------------------------------------------------
-// 9. technician_offers 
+// 8. technician_offers
 // ---------------------------------------------------------------------------
 
 model TechnicianOffer {
@@ -315,7 +332,7 @@ model TechnicianOffer {
 }
 
 // ---------------------------------------------------------------------------
-// 10. customer_reviews 
+// 9. customer_reviews 
 // ---------------------------------------------------------------------------
 
 model CustomerReview {
@@ -343,7 +360,7 @@ model CustomerReview {
 }
 
 // ---------------------------------------------------------------------------
-// 11. technician_reviews 
+// 10. technician_reviews 
 // ---------------------------------------------------------------------------
 
 model TechnicianReview {
@@ -365,18 +382,18 @@ model TechnicianReview {
 }
 
 // ---------------------------------------------------------------------------
-// 12. points_transactions
+// 11. points_transactions 
 // ---------------------------------------------------------------------------
 
 model PointsTransaction {
-  id               BigInt                 @id @default(autoincrement())
-  userId           BigInt                 @map("user_id")
+  id               BigInt                @id @default(autoincrement())
+  userId           BigInt                @map("user_id")
   type             PointsTransactionType
   amount           Int
-  balanceAfter     Int                    @map("balance_after")
-  reason           String?                @db.VarChar(255)
-  serviceRequestId BigInt?                @map("service_request_id")
-  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  balanceAfter     Int                   @map("balance_after")
+  reason           String?               @db.VarChar(255)
+  serviceRequestId BigInt?               @map("service_request_id")
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id], onDelete: SetNull)

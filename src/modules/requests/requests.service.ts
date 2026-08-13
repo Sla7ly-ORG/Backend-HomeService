@@ -25,8 +25,11 @@ import type {
  */
 export const requestDetailInclude = {
   attachments: true,
-  aiEstimation: true,
-  category: true,
+  // The three price bands, not just the category name. The AI returns a
+  // severity and no money, so the range on the estimate screen is looked up
+  // here rather than stored - three rows per category, already in memory by the
+  // time the mapper needs one.
+  category: { include: { pricing: true } },
   technician: true,
   _count: { select: { offers: true } },
 } satisfies Prisma.ServiceRequestInclude;
@@ -36,7 +39,8 @@ export const requestDetailInclude = {
  * of each, and twenty sets of image urls is twenty joins nobody looks at.
  */
 export const requestListInclude = {
-  aiEstimation: true,
+  // No pricing bands either: the row shows a title and a status, and the
+  // estimate's price range belongs to the detail screen.
   category: true,
   technician: true,
   _count: { select: { offers: true } },
@@ -270,10 +274,9 @@ export async function cancelServiceRequest(
  *  1. Load the request with its category and attachments, scoped by
  *     `customerId`. Missing -> 404.
  *  2. `requestType !== "AI_ESTIMATION"` or `status !== "PENDING"` -> 409.
- *  3. **Already has an `aiEstimation` -> return it and charge nothing.** Not a
- *     409: a customer whose app retried a timed-out request must not pay twice.
- *     `AiEstimation.serviceRequestId` is unique, so the database agrees with
- *     you. The route reports `pointsCharged: 0` for this case.
+ *  3. **`aiSeverity` already set -> return it and charge nothing.** Not a 409: a
+ *     customer whose app retried a timed-out request must not pay twice. The
+ *     route reports `pointsCharged: 0` for this case.
  *  4. Cheap balance check -> 402 before calling the AI. Do not spend somebody
  *     else's GPU on a customer who cannot pay for it. This is a courtesy check,
  *     not the guard.
@@ -283,18 +286,22 @@ export async function cancelServiceRequest(
  *  6. One `prisma.$transaction`:
  *       - `spendPoints(tx, customerId, AI_ESTIMATION_POINTS_COST, { serviceRequestId })`
  *         - the real guard. A 402 here means a concurrent estimation won.
- *       - `tx.categoryPricing.findUnique({ where: { categoryId_severity: ... } })`
- *         for the min/max. A missing row is `ApiError.conflict(
- *         messages.requests.pricingMissing)` - the bands are seeded for every
- *         category by prisma/seed-categories.ts, so a gap is a deployment fault,
- *         not something the customer did.
- *       - `tx.aiEstimation.create({ ... })`, including the AI's `summary`.
+ *       - `tx.serviceRequest.update({ where: { id, aiSeverity: null }, ... })`
+ *         writing `aiRequestId`, `aiSeverity`, `aiConfidence` and
+ *         `aiNeedsReview` from the result. **Never `actualSeverity`** - that
+ *         column means "a human looked", and pre-filling it with the model's
+ *         own answer destroys the only labels worth retraining on.
  *
- *     All three or none: if the pricing lookup fails, the 50 points are never
- *     taken, because the transaction rolls back the decrement with it.
+ *     Both or neither: the update and the decrement roll back together.
  *
- * Return the estimation, what was charged, and the new balance - the screen
- * shows the estimate and the wallet together and should not need a second call.
+ * There is no pricing lookup here any more, and no min/max to store: the
+ * severity is the whole answer, and `toAiEstimationResponse` reads the band out
+ * of `category_pricing` when the screen is drawn. A category missing its band
+ * is then a `null` price on one screen instead of a 409 that costs the customer
+ * an estimate they already paid for.
+ *
+ * Return the request, what was charged, and the new balance - the screen shows
+ * the estimate and the wallet together and should not need a second call.
  */
 export async function estimateServiceRequest(
   customerId: bigint,
@@ -308,8 +315,8 @@ export async function estimateServiceRequest(
  * TASK 10 - the Send button.
  *
  * Guards: owned by the caller, `status === "PENDING"`, and - when `requestType`
- * is `AI_ESTIMATION` - an `aiEstimation` row exists. Publishing an AI request
- * with no estimate would send technicians a card with an empty severity on it.
+ * is `AI_ESTIMATION` - `aiSeverity` is not null. Publishing an AI request with
+ * no estimate would send technicians a card with an empty severity on it.
  * `CONSULTATION` skips that check; there is nothing to wait for.
  *
  * One transaction: set `status: "WAITING_FOR_TECHNICIAN"`, then

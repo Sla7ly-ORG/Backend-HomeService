@@ -61,8 +61,11 @@ export async function fanOutOffers(
  *            status: query.status ?? "PENDING",
  *            serviceRequest: { status: "WAITING_FOR_TECHNICIAN" } }
  *
- * `include` the request with its category, attachments, `aiEstimation` and
- * customer. Paginated, newest first.
+ * `include` the request with its category (and its `pricing` bands - the job
+ * card's price range is looked up from them, the same way the customer's detail
+ * screen does it), attachments and customer. The AI's answer is columns on the
+ * request now, so it arrives with the row and needs no include of its own.
+ * Paginated, newest first.
  *
  * That second condition is belt and braces: a cancelled request should never
  * render even if one of its offers was somehow missed by the cancel.

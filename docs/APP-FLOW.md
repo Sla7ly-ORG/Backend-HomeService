@@ -156,7 +156,7 @@ GET /public/categories
 ```
 
 ```jsonc
-{ "data": [ { "id": "1", "name": "Plumbing", "homeVisitBasePrice": "150.00" } ] }
+{ "data": [ { "id": "1", "name": "سباكة", "homeVisitBasePrice": "150.00" } ] }
 ```
 
 - Not paginated — there are only a handful.
@@ -455,7 +455,7 @@ Past orders:
 ```jsonc
 // GET /customer/requests?page=1&limit=20
 { "data": [ { "id": "12", "title": "Kitchen sink leaking",
-              "categoryName": "Plumbing", "status": "TECHNICIAN_SELECTED",
+              "categoryName": "سباكة", "status": "TECHNICIAN_SELECTED",
               "requestType": "AI_ESTIMATION", "visitFee": "180.00",
               "technicianName": "Karim Fathy", "offersCount": 3,
               "createdAt": "2026-08-08T09:12:00.000Z" } ],
@@ -513,7 +513,7 @@ Authorization: Bearer <accessToken>
 // 201
 { "data": { "id": "12", "status": "PENDING", "requestType": "AI_ESTIMATION",
             "title": "Kitchen sink leaking", "images": [ … ],
-            "category": { "id": "1", "name": "Plumbing" },
+            "category": { "id": "1", "name": "سباكة" },
             "aiEstimation": null, "offersCount": 0, … } }
 ```
 
@@ -612,7 +612,7 @@ GET /customer/requests/12/offers
       "id": "7",
       "fullName": "Karim Fathy",
       "profileImage": "/uploads/1712-karim.jpg",
-      "categoryName": "Plumbing",
+      "categoryName": "سباكة",
       "city": "Cairo",
       "distanceKm": "3.40",
       "pastOrdersCount": 34,
@@ -690,8 +690,8 @@ Authorization: Bearer <technician accessToken>
       "title": "Kitchen sink leaking",
       "description": "Water under the sink since yesterday…",
       "images": ["/uploads/1712-sink.jpg"],
-      "category": { "id": "1", "name": "Plumbing" },
-      "aiEstimation": { "severity": "MEDIUM", "summary": "…",
+      "category": { "id": "1", "name": "سباكة" },
+      "aiEstimation": { "severity": "MEDIUM", "confidence": "0.8180",
                         "minPrice": "375.00", "maxPrice": "900.00" },
       "customer": { "fullName": "Mona", "city": "Giza", "distanceKm": "3.40" } },
     "fee": { "suggested": "150.00", "min": "75.00", "max": "450.00" } } ],
@@ -702,8 +702,14 @@ Authorization: Bearer <technician accessToken>
 - `fee.suggested` is what the category normally goes for — prefill the input
   with it. `min` and `max` are the bounds the server will accept, so the
   keypad can stop them before the `400` does.
-- `aiEstimation` is `null` on a `CONSULTATION` job. The card should then show
-  the photo and description alone; there is no price guess to display.
+- `aiEstimation` is `null` on a `CONSULTATION` job, and on an `AI_ESTIMATION`
+  the customer has not paid for yet. The card should then show the photo and
+  description alone; there is no price guess to display.
+- **There is no `summary`.** The model returns a severity, not prose — the card
+  shows the severity and the range and nothing written by the AI. `confidence`
+  is the model's own **0..1**, not a percentage. `minPrice`/`maxPrice` come from
+  the category's price band for that severity, not from the model, which never
+  prices anything.
 - **No phone number, no street address, no exact coordinates** — a first name,
   a city and a distance. That is deliberate and it does not change until they
   are chosen.

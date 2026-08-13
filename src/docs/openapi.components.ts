@@ -350,7 +350,7 @@ export const schemas: Record<string, JsonSchema> = {
         user: schemaRef("User"),
         category: object({
           id: bigIntId("1", "Category id."),
-          name: { type: "string", example: "Plumbing" },
+          name: { type: "string", example: "سباكة" },
         }),
         nationalId: {
           type: "string",
@@ -371,37 +371,29 @@ export const schemas: Record<string, JsonSchema> = {
   AiEstimation: {
     type: "object",
     description:
-      "What the AI made of the photo and the title: how bad it is, and what that usually costs in this category.",
+      "What the AI made of the description: how bad it is, and what that usually costs in this category. Assembled from the request's own `ai_*` columns - there is no estimation resource to fetch on its own, so it has no id of its own either. The model reads the text, not the photo, and writes no prose: there is no summary to display.",
     properties: {
-      id: bigIntId("4", "Estimation id."),
       severity: {
         type: "string",
         enum: Object.values(Severity),
         description:
-          "Picks which of the category's three price bands applies.",
+          "Picks which of the category's three price bands applies. This is the corrected severity where a human has supplied one, and the model's otherwise - the app does not need to know which.",
       },
-      minPrice: {
-        type: "string",
-        description: "Money is a Decimal in the database and a string here.",
-        example: "180.00",
-      },
-      maxPrice: { type: "string", example: "320.00" },
-      confidence: {
+      minPrice: nullable({
         type: "string",
         description:
-          "How sure the model was, 0-100. A Decimal, so a string - it does not survive being turned into a float either.",
-        example: "82.50",
-      },
-      createdAt: timestamp("When the estimate was produced."),
+          "The category's band for this severity, not a number the model produced. Money is a Decimal in the database and a string here. `null` only if the category is missing that band, which is a seeding fault.",
+        example: "180.00",
+      }),
+      maxPrice: nullable({ type: "string", example: "320.00" }),
+      confidence: nullable({
+        type: "string",
+        description:
+          "How sure the model was, **0..1** - not a percentage. A Decimal, so a string: it does not survive being turned into a float either.",
+        example: "0.8250",
+      }),
     },
-    required: [
-      "id",
-      "severity",
-      "minPrice",
-      "maxPrice",
-      "confidence",
-      "createdAt",
-    ],
+    required: ["severity", "minPrice", "maxPrice", "confidence"],
   },
 
   /** Task 7. Mirrors `toServiceRequestResponse` in requests.mapper.ts. */
@@ -413,7 +405,7 @@ export const schemas: Record<string, JsonSchema> = {
       id: bigIntId("12", "Request id."),
       customerId: bigIntId("2", "The customer who filed it - always the caller."),
       categoryId: bigIntId("1", "The speciality this needs."),
-      categoryName: { type: "string", example: "Plumbing" },
+      categoryName: { type: "string", example: "سباكة" },
       requestType: {
         type: "string",
         enum: Object.values(RequestType),
@@ -510,7 +502,7 @@ export const schemas: Record<string, JsonSchema> = {
     properties: {
       id: bigIntId("12", "Request id."),
       title: { type: "string", example: "Kitchen sink is leaking" },
-      categoryName: { type: "string", example: "Plumbing" },
+      categoryName: { type: "string", example: "سباكة" },
       status: { type: "string", enum: Object.values(RequestStatus) },
       requestType: { type: "string", enum: Object.values(RequestType) },
       visitFee: nullable({ type: "string", example: "150.00" }),
@@ -537,7 +529,7 @@ export const schemas: Record<string, JsonSchema> = {
     description: "A service category, e.g. plumbing.",
     properties: {
       id: bigIntId("1", "Category id."),
-      name: { type: "string", example: "Plumbing" },
+      name: { type: "string", example: "سباكة" },
       homeVisitBasePrice: {
         type: "string",
         description:

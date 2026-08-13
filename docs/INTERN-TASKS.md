@@ -148,7 +148,7 @@ above only need changing in one place.
 curl -X POST localhost:3000/api/v1/admin/categories \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"name":"Plumbing","homeVisitBasePrice":150}'      # 201
+  -d '{"name":"سباكة","homeVisitBasePrice":150}'      # 201
 curl localhost:3000/api/v1/public/categories             # 200, array (no token)
 # repeat the POST                                        → 409
 curl localhost:3000/api/v1/admin/categories/9999 \
@@ -456,7 +456,7 @@ table is only so you can see where it ends up.
 | 6 | `User.pointsBalance`, new `PointsTransaction` + enum | the wallet |
 | 7 | `ServiceRequest.title` | the AI needs one, the past-orders row shows one |
 | 7 | `RequestType.HOME_VISIT` → **`CONSULTATION`** | the button is called "order a consultation"; nothing reads the old name yet |
-| 8 | `AiEstimation.summary` | the customer reads the AI's answer, not just a severity |
+| 8 | `AiEstimation` dropped; `ai_request_id`, `ai_severity`, `ai_confidence`, `ai_needs_review`, `actual_severity` on `ServiceRequest` | the model returns one severity per request and no price, so the 1:1 table was a join for nothing |
 | 10 | `TechnicianOffer.consultationFee`, `submittedAt` | the fee the technician is asking |
 | 10 | `OfferStatus.ACCEPTED` → **`SUBMITTED`** | "accepted" now means the customer's side of it; the technician *submits* a fee |
 
@@ -696,7 +696,7 @@ cancelServiceRequest(customerId: bigint, requestId: bigint)
       P2003 → 409 on its own; do not pre-check it.
 - [x] `listCustomerRequests` — the past-orders screen. A page + a total, newest
       first, `where: { customerId }`, `include: { category: true, technician: true,
-      aiEstimation: true, _count: { select: { offers: true } } }`. Always scope by
+      _count: { select: { offers: true } } }`. Always scope by
       `customerId` in the `where` — never fetch and then compare in JS.
 
       **Drafts are excluded unless they are asked for by name.** With no
@@ -721,7 +721,9 @@ cancelServiceRequest(customerId: bigint, requestId: bigint)
 
 - [x] `toServiceRequestResponse(request)` — the customer's own view. Ids as
       strings, `visitFee`/`distanceKm` as strings or null, attachments as an
-      array of urls, `aiEstimation` nested or null. Include the assigned
+      array of urls, `aiEstimation` nested or null — built from the request's own
+      `ai_*` columns, so the detail `include` carries `category: { include: {
+      pricing: true } }` to price it. Include the assigned
       technician's **phone** here — but only when `status` is
       `TECHNICIAN_SELECTED` or past it, because that is the point at which the
       two of them are supposed to talk.
@@ -763,11 +765,28 @@ task is the endpoint, the charge, and the contract with them.
 
 **`prisma/schema.prisma`**
 
-- [ ] `AiEstimation.summary` — `String @db.Text`. The screen shows the AI's
-      *answer*, in Arabic, above the price range — "the problem is most likely
-      the joint under the sink, you need a plumber to replace it". A severity
-      enum is what we price from; a sentence is what the customer came for.
-      Migrate.
+- [ ] **`AiEstimation` is gone** — its five replacements are columns on
+      `ServiceRequest`, all nullable, already migrated by
+      `20260813000000_ai_fields_on_service_request`:
+
+      | column | type | what it is |
+      | --- | --- | --- |
+      | `aiRequestId` | `String? @db.Uuid` | the model's own id for the prediction. We never generate or look it up; it is what ties a disputed severity to the row the AI service wrote in its prediction log. |
+      | `aiSeverity` | `Severity?` | what the model said. Non-null is also the "already estimated" flag. |
+      | `aiConfidence` | `Decimal? @db.Decimal(5,4)` | **0..1**, as the service sends it — not a percentage. |
+      | `aiNeedsReview` | `Boolean?` | the model's own flag, copied from the response. Never computed here. |
+      | `actualSeverity` | `Severity?` | what it turned out to be once a human knew. |
+
+      **There is no `summary`.** The deployed service classifies and writes no
+      prose — see the contract in `ai.client.ts`. The estimate screen shows a
+      severity and the price range, and nothing is passed through to the
+      customer verbatim. If a sentence is wanted there it is a phrase per
+      severity per category, which is a table, not a model.
+
+      `actualSeverity` is the one column with a rule attached: it means *a human
+      looked*. Never default it to `aiSeverity`. It is the label the model gets
+      retrained on, and seeding it with the model's own answer trains it to
+      agree with itself.
 
 **`src/core/env.ts`**
 
@@ -807,7 +826,7 @@ The contract to hand the AI engineer:
 
 ```jsonc
 // POST /estimate
-{ "category": "Plumbing",
+{ "category": "سباكة",
   "title": "Kitchen sink leaking",
   "description": "Water under the sink since yesterday…",
   "images": ["https://api.example.com/uploads/1712-sink.jpg"] }
@@ -843,10 +862,9 @@ estimateServiceRequest(customerId: bigint, requestId: bigint)
       1. Load the request with its category and attachments, scoped by
          `customerId`. Missing → 404.
       2. `requestType !== "AI_ESTIMATION"` or `status !== "PENDING"` → 409.
-      3. **Already has an `aiEstimation` → return it and charge nothing.** Not a
+      3. **`aiSeverity` already set → return it and charge nothing.** Not a
          409: a customer whose app retried a timed-out request must not pay
-         twice. `AiEstimation.serviceRequestId` is unique, so the database
-         agrees with you.
+         twice.
       4. Cheap balance check → 402 before calling the AI. Do not spend somebody
          else's GPU on a customer who cannot pay for it. This is a courtesy
          check, not the guard.
@@ -856,21 +874,27 @@ estimateServiceRequest(customerId: bigint, requestId: bigint)
       6. One `prisma.$transaction`:
          - `spendPoints(tx, customerId, AI_ESTIMATION_POINTS_COST, { serviceRequestId })`
            — the real guard, and a 402 here means a concurrent estimation won.
-         - `tx.categoryPricing.findUnique({ where: { categoryId_severity: … } })`
-           for the min/max. Missing row → `ApiError.conflict(messages.requests.pricingMissing)`
-           and tell them to run `prisma/seed-categories.ts`; the bands are
-           seeded for every category, so a gap is a deployment fault, not a user
-           error.
-         - `tx.aiEstimation.create({ … })`.
+         - `tx.serviceRequest.update({ where: { id, aiSeverity: null }, … })`
+           writing `aiRequestId`, `aiSeverity`, `aiConfidence` and
+           `aiNeedsReview` from the result. **Never `actualSeverity`.**
 
-         All three or none: if the pricing lookup fails, the 50 points are never
-         taken, because the transaction rolls back the decrement with it.
+         Both or neither: the update and the decrement roll back together.
+
+         No pricing lookup here any more, and no min/max to store — the severity
+         is the whole answer, and the band is read when the screen is drawn. A
+         category missing its band is then a `null` price on one screen instead
+         of a 409 that costs the customer an estimate they already paid for.
 
 **`src/modules/requests/requests.mapper.ts`**
 
-- [ ] `toAiEstimationResponse(estimation)` — `severity`, `summary`,
-      `minPrice`/`maxPrice` as 2dp strings, `confidence` as a string. Prices are
-      money: strings, never floats.
+- [ ] `toAiEstimationResponse(request)` — takes the request, not an estimation
+      row. `null` when `aiSeverity` is null. Otherwise `severity`
+      (**`actualSeverity ?? aiSeverity`** — once a human has corrected a
+      prediction the customer sees and is priced off the corrected one),
+      `minPrice`/`maxPrice` as 2dp strings looked up from the category's bands,
+      and `confidence` as a 4dp string. Prices are money: strings, never floats.
+      `aiNeedsReview` and the raw `aiSeverity` stay out — whether the model
+      doubted itself is for the review queue, not for the customer.
 
 **`src/modules/requests/requests.customer.routes.ts`**
 
@@ -1102,7 +1126,7 @@ publishServiceRequest(customerId: bigint, requestId: bigint)
 ```
 
 - [ ] Guards: owned by the caller, `status === "PENDING"`, and — when
-      `requestType` is `AI_ESTIMATION` — an `aiEstimation` row exists. Publishing
+      `requestType` is `AI_ESTIMATION` — `aiSeverity` is not null. Publishing
       an AI request with no estimate would send technicians a card with an empty
       severity on it. `CONSULTATION` skips that check: it is the "just send
       someone" button and there is nothing to wait for.
@@ -1167,8 +1191,10 @@ declineOffer(technicianId: bigint, offerId: bigint)
 
 - [ ] `listTechnicianJobs` — the feed. `where: { technicianId, status:
       query.status ?? "PENDING", serviceRequest: { status: "WAITING_FOR_TECHNICIAN" } }`,
-      `include` the request with its category, attachments, `aiEstimation` and
-      customer. Paginated, newest first. The second condition is belt and
+      `include` the request with its category (and its `pricing` bands — the
+      card's price range is looked up from them), attachments and customer. The
+      AI's answer is columns on the request now and needs no include of its own.
+      Paginated, newest first. The second condition is belt and
       braces — a cancelled request should never render even if its offers were
       missed.
 - [ ] `submitOffer` — the technician's price. One transaction, and every guard

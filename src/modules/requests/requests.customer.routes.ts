@@ -92,7 +92,7 @@ requestsCustomerRoutes.post("/:id/ai-estimation", async (_req, res) => {
   // TODO(task 8): estimateServiceRequest, then 201 with all three numbers the
   // screen needs at once:
   //
-  //   { data: { estimation: toAiEstimationResponse(estimation),
+  //   { data: { estimation: toAiEstimationResponse(request),
   //             pointsCharged, pointsBalance } }
   //
   // `pointsCharged` is 0 when the estimate already existed. Same status, same

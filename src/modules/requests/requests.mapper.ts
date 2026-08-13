@@ -1,4 +1,3 @@
-import type { AiEstimation } from "../../generated/prisma/client.js";
 import type { RequestStatus } from "../../generated/prisma/enums.js";
 import type {
   ServiceRequestDetail,
@@ -68,9 +67,7 @@ export function toServiceRequestResponse(request: ServiceRequestDetail) {
 
     images: request.attachments.map((attachment) => attachment.imageUrl),
 
-    aiEstimation: request.aiEstimation
-      ? toAiEstimationResponse(request.aiEstimation)
-      : null,
+    aiEstimation: toAiEstimationResponse(request),
 
     technician: request.technician
       ? {
@@ -110,24 +107,49 @@ export function toServiceRequestListItem(request: ServiceRequestListRow) {
 /**
  * TASK 8 - the AI's answer, as the estimate screen shows it.
  *
- * `minPrice` / `maxPrice` / `confidence` as strings. The prices are money and
- * the confidence is a Decimal; neither survives being turned into a float.
+ * Assembled from the request's own `ai_*` columns; there is no `ai_estimations`
+ * row to read any more. `null` when the model has not answered - a
+ * `CONSULTATION`, or an `AI_ESTIMATION` the customer has not paid for yet - and
+ * the screen shows the photo and description alone.
  *
- * Written in task 7 because `toServiceRequestResponse` nests it and the seed
- * already creates estimation rows - without it every seeded AI request would
- * answer `501` on the detail screen. Task 8 adds `summary` to the model, and
- * this is where it goes: the sentence the customer actually reads, already
- * written in Arabic, passed through untouched.
+ * **The severity shown is `actualSeverity ?? aiSeverity`.** Once a human has
+ * corrected a prediction, the customer sees the corrected one and is priced off
+ * it; the raw `aiSeverity` stays in the row for whoever retrains the model, and
+ * is not what anybody is quoted from.
+ *
+ * The price range is looked up from the category's bands, not stored: the model
+ * returns a severity and no money, and `category_pricing` is the one place that
+ * knows what a severity costs. A category missing the band is `null` prices
+ * rather than a throw - a seeding gap should not take down a detail screen that
+ * renders fine without a number.
+ *
+ * `minPrice` / `maxPrice` / `confidence` as strings: money is a Decimal and the
+ * confidence is one too, and neither survives being turned into a float.
+ * `confidence` is the service's own 0..1, printed to four places, *not* a
+ * percentage - the old column stored 0-100 and the app has to be told once.
+ *
+ * `needsReview` and the raw `aiSeverity` are deliberately not here. Whether the
+ * model doubted itself is for the review queue, not for the customer reading
+ * the estimate they just bought.
  */
-export function toAiEstimationResponse(estimation: AiEstimation) {
+export function toAiEstimationResponse(
+  request: Pick<
+    ServiceRequestDetail,
+    "aiSeverity" | "actualSeverity" | "aiConfidence" | "category"
+  >,
+) {
+  if (request.aiSeverity === null) return null;
+
+  const severity = request.actualSeverity ?? request.aiSeverity;
+  const band = request.category.pricing.find(
+    (row) => row.severity === severity,
+  );
+
   return {
-    id: estimation.id.toString(),
-    severity: estimation.severity,
-    // TODO(task 8): `summary` - added to the model by that task's migration.
-    minPrice: estimation.minPrice.toFixed(2),
-    maxPrice: estimation.maxPrice.toFixed(2),
-    confidence: estimation.confidence.toFixed(2),
-    createdAt: estimation.createdAt,
+    severity,
+    minPrice: band?.minPrice.toFixed(2) ?? null,
+    maxPrice: band?.maxPrice.toFixed(2) ?? null,
+    confidence: request.aiConfidence?.toFixed(4) ?? null,
   };
 }
 
