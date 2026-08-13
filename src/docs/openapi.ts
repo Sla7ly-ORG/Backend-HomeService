@@ -1070,7 +1070,7 @@ export const openApiDocument = {
         ].join("\n\n"),
         requestBody: jsonBody(
           withExamples(fromZod(createCategoryBody), {
-            name: "Plumbing",
+            name: "سباكة",
             homeVisitBasePrice: "150.00",
           }),
         ),

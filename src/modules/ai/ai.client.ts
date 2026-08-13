@@ -11,12 +11,20 @@ import { ApiError } from "../../core/errors.js";
  * The contract, as the deployed service actually implements it:
  *
  *   POST {AI_SERVICE_URL}/predict
- *   { "category": "Plumbing",
- *     "description": "Water under the sink since yesterday..." }
+ *   { "category": "سباكة",
+ *     "description": "حوض المطبخ بينقط من تحت من امبارح..." }
+ *
+ * `category` must be one of the **four** the service has a model for, spelled
+ * its way: `سباكة`, `نجارة`, `كهرباء`, `دهانات`. It maps those to its English
+ * model keys itself and answers `400 Unsupported category` to anything else -
+ * `كهربا` and `نقاشة` included, so they are not interchangeable with `كهرباء`
+ * and `دهانات`. `Category.name` is seeded to exactly these, so the name goes
+ * out unchanged and nothing here translates anything. A fifth category in the
+ * database needs a fifth model on their side first.
  *
  *   200
  *   { "request_id": "913819cb-3082-4edb-a56a-5c93a7fb0912",
- *     "category": "Plumbing",
+ *     "category": "سباكة",
  *     "description": "...",            // echoed back, ignored here
  *     "severity": "LARGE",             // SMALL | MEDIUM | LARGE
  *     "confidence": 0.3789,            // 0..1, of the winning class

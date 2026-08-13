@@ -187,6 +187,12 @@ const DISTRICTS = [
  * The service catalogue. `base` is the home-visit call-out fee in EGP; the
  * three severity bands are derived from it so a LARGE job always costs more
  * than a MEDIUM one, in every category.
+ *
+ * The four the AI service has a model for, spelled the way it spells them - it
+ * answers `400 Unsupported category` to anything else, and `Category.name` is
+ * sent to `/predict` unchanged. `كهربا` and `نقاشة` are *not* accepted spellings
+ * of `كهرباء` and `دهانات`. Kept identical to prisma/seed-categories.ts, which
+ * is the half that is safe to run against a deployed database.
  */
 const CATEGORIES = [
   { name: "سباكة", base: 150 },
@@ -202,7 +208,14 @@ const SEVERITY_BANDS: Record<Severity, { min: number; max: number }> = {
   LARGE: { min: 6, max: 15 },
 };
 
-/** One realistic complaint per category, so descriptions are not lorem soup. */
+/**
+ * One realistic complaint per category, so descriptions are not lorem soup.
+ *
+ * In Egyptian Arabic, because that is what a customer types into the box and
+ * therefore what `/predict` receives in production - seeding English here would
+ * be exercising the model on input it never sees. Keyed by `Category.name`,
+ * which is Arabic for the same reason.
+ */
 const COMPLAINTS: Record<string, string[]> = {
   سباكة: [
     "حوض المطبخ بيسرب مياه من أسفل الحوض.",
@@ -258,17 +271,6 @@ const CATEGORY_TITLES: Record<string, string[]> = {
     "تجديد دهان الحوائط",
   ],
 };
-
-/**
- * The one-line version of a complaint, for `ServiceRequest.title` (task 7).
- *
- * Every sentence above leads with what is wrong and then adds the detail after
- * a comma or an "and", so the first clause is the headline - which is exactly
- * what one row of the past-orders list has room to print.
- */
-function titleFrom(complaint: string) {
-  return complaint.replace(/\.$/, "").split(/,| and /)[0].slice(0, 120);
-}
 
 const CUSTOMER_COMMENTS = [
   "وصل في الموعد وأنهى الشغل بسرعة وباحترافية.",

@@ -41,9 +41,13 @@ enum VerificationStatus {
 // Both branches collect a photo and a description, and both end up published
 // the same way. The type only decides whether an estimate is required first,
 // and what the technician's card has room to show.
+//
+// What 50 points buys on the AI screen is a severity, and the price band that
+// severity maps to in `category_pricing`. The model writes no prose and does
+// not look at the photo - see src/modules/ai/ai.client.ts.
 enum RequestType {
-  AI_ESTIMATION
-  CONSULTATION
+  AI_ESTIMATION // 50 points, an estimate first
+  CONSULTATION  // straight to the technicians, no AI, no charge
 }
 
 enum RequestStatus {

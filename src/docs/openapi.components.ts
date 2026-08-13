@@ -350,7 +350,7 @@ export const schemas: Record<string, JsonSchema> = {
         user: schemaRef("User"),
         category: object({
           id: bigIntId("1", "Category id."),
-          name: { type: "string", example: "Plumbing" },
+          name: { type: "string", example: "سباكة" },
         }),
         nationalId: {
           type: "string",
@@ -405,7 +405,7 @@ export const schemas: Record<string, JsonSchema> = {
       id: bigIntId("12", "Request id."),
       customerId: bigIntId("2", "The customer who filed it - always the caller."),
       categoryId: bigIntId("1", "The speciality this needs."),
-      categoryName: { type: "string", example: "Plumbing" },
+      categoryName: { type: "string", example: "سباكة" },
       requestType: {
         type: "string",
         enum: Object.values(RequestType),
@@ -502,7 +502,7 @@ export const schemas: Record<string, JsonSchema> = {
     properties: {
       id: bigIntId("12", "Request id."),
       title: { type: "string", example: "Kitchen sink is leaking" },
-      categoryName: { type: "string", example: "Plumbing" },
+      categoryName: { type: "string", example: "سباكة" },
       status: { type: "string", enum: Object.values(RequestStatus) },
       requestType: { type: "string", enum: Object.values(RequestType) },
       visitFee: nullable({ type: "string", example: "150.00" }),
@@ -529,7 +529,7 @@ export const schemas: Record<string, JsonSchema> = {
     description: "A service category, e.g. plumbing.",
     properties: {
       id: bigIntId("1", "Category id."),
-      name: { type: "string", example: "Plumbing" },
+      name: { type: "string", example: "سباكة" },
       homeVisitBasePrice: {
         type: "string",
         description:

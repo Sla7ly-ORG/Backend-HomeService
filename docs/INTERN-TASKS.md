@@ -148,7 +148,7 @@ above only need changing in one place.
 curl -X POST localhost:3000/api/v1/admin/categories \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"name":"Plumbing","homeVisitBasePrice":150}'      # 201
+  -d '{"name":"سباكة","homeVisitBasePrice":150}'      # 201
 curl localhost:3000/api/v1/public/categories             # 200, array (no token)
 # repeat the POST                                        → 409
 curl localhost:3000/api/v1/admin/categories/9999 \
@@ -826,7 +826,7 @@ The contract to hand the AI engineer:
 
 ```jsonc
 // POST /estimate
-{ "category": "Plumbing",
+{ "category": "سباكة",
   "title": "Kitchen sink leaking",
   "description": "Water under the sink since yesterday…",
   "images": ["https://api.example.com/uploads/1712-sink.jpg"] }

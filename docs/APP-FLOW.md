@@ -156,7 +156,7 @@ GET /public/categories
 ```
 
 ```jsonc
-{ "data": [ { "id": "1", "name": "Plumbing", "homeVisitBasePrice": "150.00" } ] }
+{ "data": [ { "id": "1", "name": "سباكة", "homeVisitBasePrice": "150.00" } ] }
 ```
 
 - Not paginated — there are only a handful.
@@ -455,7 +455,7 @@ Past orders:
 ```jsonc
 // GET /customer/requests?page=1&limit=20
 { "data": [ { "id": "12", "title": "Kitchen sink leaking",
-              "categoryName": "Plumbing", "status": "TECHNICIAN_SELECTED",
+              "categoryName": "سباكة", "status": "TECHNICIAN_SELECTED",
               "requestType": "AI_ESTIMATION", "visitFee": "180.00",
               "technicianName": "Karim Fathy", "offersCount": 3,
               "createdAt": "2026-08-08T09:12:00.000Z" } ],
@@ -513,7 +513,7 @@ Authorization: Bearer <accessToken>
 // 201
 { "data": { "id": "12", "status": "PENDING", "requestType": "AI_ESTIMATION",
             "title": "Kitchen sink leaking", "images": [ … ],
-            "category": { "id": "1", "name": "Plumbing" },
+            "category": { "id": "1", "name": "سباكة" },
             "aiEstimation": null, "offersCount": 0, … } }
 ```
 
@@ -612,7 +612,7 @@ GET /customer/requests/12/offers
       "id": "7",
       "fullName": "Karim Fathy",
       "profileImage": "/uploads/1712-karim.jpg",
-      "categoryName": "Plumbing",
+      "categoryName": "سباكة",
       "city": "Cairo",
       "distanceKm": "3.40",
       "pastOrdersCount": 34,
@@ -690,7 +690,7 @@ Authorization: Bearer <technician accessToken>
       "title": "Kitchen sink leaking",
       "description": "Water under the sink since yesterday…",
       "images": ["/uploads/1712-sink.jpg"],
-      "category": { "id": "1", "name": "Plumbing" },
+      "category": { "id": "1", "name": "سباكة" },
       "aiEstimation": { "severity": "MEDIUM", "confidence": "0.8180",
                         "minPrice": "375.00", "maxPrice": "900.00" },
       "customer": { "fullName": "Mona", "city": "Giza", "distanceKm": "3.40" } },

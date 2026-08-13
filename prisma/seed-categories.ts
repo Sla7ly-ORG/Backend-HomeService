@@ -27,21 +27,22 @@ import { Severity } from "../src/generated/prisma/enums.js";
  *   docker compose run --rm migrate npx tsx prisma/seed-categories.ts
  *
  * The list is kept identical to CATEGORIES in seed.ts on purpose - a technician
- * seeded locally under "Plumbing" should mean the same thing in production.
+ * seeded locally under "سباكة" should mean the same thing in production.
+ *
+ * **These four names are a contract with the AI service, not a display choice.**
+ * Its `CATEGORY_MAP` knows exactly these four and answers `400 Unsupported
+ * category` to anything else, so `Category.name` is what gets sent to
+ * `/predict` unchanged - see the contract in src/modules/ai/ai.client.ts. The
+ * colloquial spellings are *not* interchangeable with them: `كهربا` and `نقاشة`
+ * are both rejected, where `كهرباء` and `دهانات` are accepted. Adding a fifth
+ * category here means training a fifth model first; until then it would take
+ * customers' points and fail every estimate.
  */
 const CATEGORIES = [
-  { name: "Plumbing", base: 150 },
-  { name: "Electrical", base: 150 },
-  { name: "Air Conditioning", base: 200 },
-  { name: "Appliance Repair", base: 180 },
-  { name: "Carpentry", base: 160 },
-  { name: "Painting", base: 140 },
-  { name: "Home Cleaning", base: 120 },
-  { name: "Pest Control", base: 200 },
-  { name: "Satellite & Antenna", base: 130 },
-  { name: "Locksmith", base: 170 },
-  { name: "Water Heaters & Gas", base: 180 },
-  { name: "Aluminium & Glass", base: 190 },
+  { name: "سباكة", base: 150 },
+  { name: "كهرباء", base: 150 },
+  { name: "نجارة", base: 160 },
+  { name: "دهانات", base: 140 },
 ];
 
 /** Multipliers on the base price, in order. Bands touch but never overlap. */
