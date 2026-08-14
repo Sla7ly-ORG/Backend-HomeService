@@ -1,5 +1,9 @@
-import type { Severity } from "../../generated/prisma/enums.js";
+import { Severity } from "../../generated/prisma/enums.js";
 import { ApiError } from "../../core/errors.js";
+import { z } from "zod";
+import { createHash, randomUUID } from "node:crypto";
+import { env } from "../../core/env.js";
+import { messages } from "../../core/messages.js";
 
 /**
  * TASK 8 - the entire AI integration, in one file.
@@ -105,9 +109,98 @@ export type AiEstimateResult = {
  *     unconfigured URL throws at startup instead, in core/env.ts. Without the
  *     stub nobody can test tasks 9, 10 and 11 until the model is reachable.
  */
+/** What `/predict` actually answers, validated before anything downstream sees it. */
+const predictResponseSchema = z.object({
+  request_id: z.string().uuid(),
+  severity: z.enum(Severity),
+  confidence: z.number().min(0).max(1),
+  needs_review: z.boolean(),
+  // Echoed back and not used here, but present on the wire.
+  category: z.string().optional(),
+  description: z.string().optional(),
+  probabilities: z.record(z.string(), z.number()).optional(),
+});
+
+/**
+ * A stable, offline stand-in for the model - same input, same answer, every
+ * time, so the estimate screen and tasks 9-11 are testable without a real
+ * service behind AI_SERVICE_URL.
+ */
+function stubEstimate(input: AiEstimateInput): AiEstimateResult {
+  const hash = createHash("sha256").update(input.description).digest("hex");
+  const severities = [Severity.SMALL, Severity.MEDIUM, Severity.LARGE];
+  const severity =
+    severities[parseInt(hash.slice(0, 2), 16) % severities.length]!;
+
+  const aiRequestId = randomUUID();
+  const result: AiEstimateResult = {
+    aiRequestId,
+    severity,
+    confidence: 0.5,
+    needsReview: true,
+  };
+
+  console.log(
+    `[ai] AI_SERVICE_URL not configured - stub estimate for "${input.categoryName}": ${severity}`,
+  );
+
+  return result;
+}
+
 export async function estimateProblem(
   input: AiEstimateInput,
 ): Promise<AiEstimateResult> {
-  // TODO(task 8)
-  throw ApiError.notImplemented();
+  if (!env.AI_SERVICE_URL) {
+    return stubEstimate(input);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${env.AI_SERVICE_URL}/predict`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        category: input.categoryName,
+        description: input.description,
+      }),
+      signal: AbortSignal.timeout(env.AI_TIMEOUT_MS),
+    });
+  } catch {
+    // Network error, DNS failure, or the timeout above firing.
+    throw ApiError.serviceUnavailable(messages.ai.unavailable);
+  }
+
+  if (!response.ok) {
+    // A 400 here is ours, not an outage: an unsupported category or an empty
+    // description - the two things their /predict rejects. Log it loudly so
+    // it gets noticed as a category drift and not filed under "AI is down",
+    // then still hand the customer the same 503 and keep their points.
+    if (response.status === 400) {
+      const body = await response.text().catch(() => "");
+      console.error(
+        `[ai] /predict rejected the request as 400 for category "${input.categoryName}": ${body}`,
+      );
+    }
+    throw ApiError.serviceUnavailable(messages.ai.unavailable);
+  }
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch {
+    throw ApiError.serviceUnavailable(messages.ai.unavailable);
+  }
+
+  const parsed = predictResponseSchema.safeParse(json);
+  if (!parsed.success) {
+    console.error("[ai] /predict returned an unparseable body:", parsed.error);
+    throw ApiError.serviceUnavailable(messages.ai.unavailable);
+  }
+
+  return {
+    aiRequestId: parsed.data.request_id,
+    severity: parsed.data.severity,
+    confidence: parsed.data.confidence,
+    needsReview: parsed.data.needs_review,
+  };
 }

@@ -1,5 +1,9 @@
 import { createRequire } from "node:module";
-import { UserRole, VerificationStatus } from "../generated/prisma/enums.js";
+import {
+  Severity,
+  UserRole,
+  VerificationStatus,
+} from "../generated/prisma/enums.js";
 import { paginationQuery } from "../core/pagination.js";
 import {
   refreshBody,
@@ -41,7 +45,10 @@ import {
   withExamples,
   type JsonSchema,
 } from "./openapi.components.js";
-import { createCategoryBody, updateCategoryBody } from "../modules/categories/categories.schema.js";
+import {
+  createCategoryBody,
+  updateCategoryBody,
+} from "../modules/categories/categories.schema.js";
 import { pingBody } from "../realtime/realtime.schema.js";
 
 /**
@@ -412,7 +419,7 @@ export const openApiDocument = {
           "",
           "`isNewUser` tells the app whether to start onboarding; `accountState` tells it exactly which screen, including for a returning technician who is still waiting for approval.",
           "",
-          '**`otpCode` must be the code from *your* step 1 - the example value below is a placeholder and always answers `Wrong code`.** Two more ways to get that same answer: sending a different `phone` than the one you asked with, or reusing an older code (only the newest code for a phone is checked, so asking twice retires the first one).',
+          "**`otpCode` must be the code from *your* step 1 - the example value below is a placeholder and always answers `Wrong code`.** Two more ways to get that same answer: sending a different `phone` than the one you asked with, or reusing an older code (only the newest code for a phone is checked, so asking twice retires the first one).",
         ].join("\n"),
         security: openToAnyone,
         requestBody: jsonBody(
@@ -707,7 +714,9 @@ export const openApiDocument = {
         responses: {
           200: jsonResponse(
             "The current balance.",
-            dataOf(object({ pointsBalance: { type: "integer", example: 250 } })),
+            dataOf(
+              object({ pointsBalance: { type: "integer", example: 250 } }),
+            ),
           ),
           401: responseRef("Unauthorized"),
           403: responseRef("Forbidden"),
@@ -776,7 +785,7 @@ export const openApiDocument = {
         ),
         responses: {
           201: jsonResponse(
-            "The draft, with `status: \"PENDING\"`.",
+            'The draft, with `status: "PENDING"`.',
             dataOf(schemaRef("ServiceRequest")),
           ),
           400: responseRef("ValidationError"),
@@ -856,10 +865,7 @@ export const openApiDocument = {
         ].join("\n"),
         parameters: [idPathParam("The request id.")],
         responses: {
-          200: jsonResponse(
-            "Cancelled.",
-            dataOf(schemaRef("ServiceRequest")),
-          ),
+          200: jsonResponse("Cancelled.", dataOf(schemaRef("ServiceRequest"))),
           400: responseRef("ValidationError"),
           401: responseRef("Unauthorized"),
           403: responseRef("Forbidden"),
@@ -902,6 +908,74 @@ export const openApiDocument = {
           403: responseRef("Forbidden"),
           404: responseRef("NotFound"),
           409: responseRef("Conflict"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/customer/requests/{id}/ai-estimation
+    // -----------------------------------------------------------------------
+    "/api/v1/customer/requests/{id}/ai-estimation": {
+      post: {
+        tags: ["Customer"],
+        operationId: "estimateServiceRequest",
+        summary: "Describe it with an AI",
+        description: [
+          "Spends `AI_ESTIMATION_POINTS_COST` points (50 by default) to have the model read the title and description and answer with a severity and a price range for this category.",
+          "",
+          "Only works on an `AI_ESTIMATION` draft still `PENDING`, otherwise `409`. Not enough points is `402`.",
+          "",
+          "**Calling it again on the same request returns the same estimate and charges nothing** (`pointsCharged: 0`) - a client that retried a timed-out call must not pay twice. The response shape is identical either way, so the app draws the same screen.",
+          "",
+          "The AI itself can be down or unreachable - that is `503`, and nothing is charged when it happens.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          201: jsonResponse(
+            "The estimate, what it cost, and the new balance - together, so the screen needs one call.",
+            dataOf(
+              object({
+                estimation: {
+                  type: "object",
+                  properties: {
+                    severity: {
+                      type: "string",
+                      enum: Object.values(Severity),
+                    },
+                    minPrice: {
+                      type: ["string", "null"],
+                      example: "375.00",
+                    },
+                    maxPrice: {
+                      type: ["string", "null"],
+                      example: "900.00",
+                    },
+                    confidence: {
+                      type: ["string", "null"],
+                      example: "0.82",
+                    },
+                  },
+                  required: ["severity", "minPrice", "maxPrice", "confidence"],
+                },
+                pointsCharged: {
+                  type: "integer",
+                  description: "0 on a repeated call.",
+                  example: 50,
+                },
+                pointsBalance: {
+                  type: "integer",
+                  example: 50,
+                },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          402: responseRef("InsufficientPoints"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+          503: responseRef("ServiceUnavailable"),
         },
       },
     },
@@ -1048,7 +1122,9 @@ export const openApiDocument = {
         responses: {
           201: jsonResponse(
             "Points granted.",
-            dataOf(object({ pointsBalance: { type: "integer", example: 350 } })),
+            dataOf(
+              object({ pointsBalance: { type: "integer", example: 350 } }),
+            ),
           ),
           400: responseRef("ValidationError"),
           401: responseRef("Unauthorized"),
@@ -1112,7 +1188,7 @@ export const openApiDocument = {
           "",
           scaffolded(1),
         ].join("\n\n"),
-       requestBody: jsonBody(fromZod(updateCategoryBody)),
+        requestBody: jsonBody(fromZod(updateCategoryBody)),
         responses: {
           200: jsonResponse("Updated.", dataOf(schemaRef("Category"))),
           400: responseRef("ValidationError"),

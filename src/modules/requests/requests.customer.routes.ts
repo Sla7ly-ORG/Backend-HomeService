@@ -4,6 +4,7 @@ import { paginationMeta } from "../../core/pagination.js";
 import { currentUser } from "../auth/auth.middleware.js";
 import * as requestsService from "./requests.service.js";
 import {
+  toAiEstimationResponse,
   toServiceRequestListItem,
   toServiceRequestResponse,
 } from "./requests.mapper.js";
@@ -88,18 +89,19 @@ requestsCustomerRoutes.post("/:id/cancel", async (req, res) => {
 });
 
 /** POST /api/v1/customer/requests/:id/ai-estimation */
-requestsCustomerRoutes.post("/:id/ai-estimation", async (_req, res) => {
-  // TODO(task 8): estimateServiceRequest, then 201 with all three numbers the
-  // screen needs at once:
-  //
-  //   { data: { estimation: toAiEstimationResponse(request),
-  //             pointsCharged, pointsBalance } }
-  //
-  // `pointsCharged` is 0 when the estimate already existed. Same status, same
-  // body shape - the app draws the same screen either way.
-  throw ApiError.notImplemented();
-});
+requestsCustomerRoutes.post("/:id/ai-estimation", async (req, res) => {
+  const { id } = requestIdParams.parse(req.params);
+  const { request, pointsCharged, pointsBalance } =
+    await requestsService.estimateServiceRequest(currentUser(req).id, id);
 
+  res.status(201).json({
+    data: {
+      estimation: toAiEstimationResponse(request),
+      pointsCharged,
+      pointsBalance,
+    },
+  });
+});
 /** POST /api/v1/customer/requests/:id/publish - the Send button. */
 requestsCustomerRoutes.post("/:id/publish", async (_req, res) => {
   // TODO(task 10): publishServiceRequest ->

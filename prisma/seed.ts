@@ -836,7 +836,6 @@ async function seedServiceRequests(
       const assigned = ASSIGNED_STATUSES.includes(status);
 
       const requestType = faker.helpers.weightedArrayElement([
-
         {
           value: RequestType.AI_ESTIMATION,
           weight: 55,
@@ -869,7 +868,6 @@ async function seedServiceRequests(
         from: customer.createdAt,
         to: new Date(),
       });
-
 
       // ---------------------------------------------------------
       // HOME VISIT / DISTANCE
@@ -954,8 +952,7 @@ async function seedServiceRequests(
           ? faker.number.float({ min: 0.31, max: 0.99, fractionDigits: 4 })
           : null;
 
-      const aiNeedsReview =
-        aiConfidence === null ? null : aiConfidence < 0.5;
+      const aiNeedsReview = aiConfidence === null ? null : aiConfidence < 0.5;
 
       // `actual_severity` means *a human wrote down what it turned out to be*,
       // and most requests never get that far. Recording it on every row would
@@ -1048,8 +1045,7 @@ async function seedServiceRequests(
       const offerees = faker.helpers.arrayElements(others, offereeCount);
 
       const offers = [
-        // Exactly one SELECTED offer for
-        // an assigned request.
+        // Exactly one SELECTED offer for an assigned request.
         ...(selected
           ? [
               {
@@ -1057,7 +1053,16 @@ async function seedServiceRequests(
 
                 status: OfferStatus.SELECTED,
 
-                acceptedAt: minutesAfter(
+                // The technician submitted a fee before the customer selected
+                // this offer.
+                consultationFee: money(
+                  faker.number.int({
+                    min: category.bands.MEDIUM.min,
+                    max: category.bands.LARGE.max,
+                  }),
+                ),
+
+                submittedAt: minutesAfter(
                   createdAt,
                   faker.number.int({
                     min: 3,
@@ -1081,7 +1086,7 @@ async function seedServiceRequests(
                   weight: 45,
                 },
                 {
-                  value: OfferStatus.ACCEPTED,
+                  value: OfferStatus.SUBMITTED,
                   weight: 35,
                 },
                 {
@@ -1098,21 +1103,39 @@ async function seedServiceRequests(
             }),
           );
 
+          // Only submitted offers have a fee and submittedAt.
+          // PENDING and DECLINED offers have neither.
+          const submitted =
+            offerStatus === OfferStatus.SUBMITTED ||
+            offerStatus === OfferStatus.NOT_SELECTED;
+
+          const submittedAt = submitted
+            ? minutesAfter(
+                offerCreatedAt,
+                faker.number.int({
+                  min: 1,
+                  max: 20,
+                }),
+              )
+            : null;
+
+          const consultationFee = submitted
+            ? money(
+                faker.number.int({
+                  min: category.bands.MEDIUM.min,
+                  max: category.bands.LARGE.max,
+                }),
+              )
+            : null;
+
           return {
             technicianId: technician.id,
 
             status: offerStatus,
 
-            acceptedAt:
-              offerStatus === OfferStatus.ACCEPTED
-                ? minutesAfter(
-                    offerCreatedAt,
-                    faker.number.int({
-                      min: 1,
-                      max: 20,
-                    }),
-                  )
-                : null,
+            consultationFee,
+
+            submittedAt,
 
             createdAt: offerCreatedAt,
 

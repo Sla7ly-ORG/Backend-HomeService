@@ -131,6 +131,7 @@ const fieldLabels: Record<string, string> = {
   requestType: "نوع الطلب",
   serviceAddress: "عنوان الطلب",
   serviceCity: "مدينة الطلب",
+  consultationFee: "سعر الكشف",
 };
 
 export function fieldLabel(field: string): string {
@@ -277,6 +278,7 @@ export const messages = {
       governorate: (code: string) =>
         `الرقمين 8 و9 في الرقم القومي ("${code}") مش كود محافظة مصرية`,
     },
+    feeDecimals: "سعر الكشف يقبل رقمين عشريين على الأكثر",
   },
 
   /**
@@ -296,7 +298,17 @@ export const messages = {
   points: {
     notEnough: "رصيد نقاطك مش كفاية. اشحن نقاط وحاول تاني.",
   },
-
+  ai: {
+    unavailable: "الخدمة مش متاحة دلوقتي، جرّب كمان شوية أو اطلب كشف",
+  },
+  offers: {
+    noLongerAvailable: "الطلب ده مبقاش متاح، حد تاني رد عليه أو العميل لغاه",
+    enoughTechnicians: "وصل العدد المسموح بيه من الفنيين اللي بعتوا سعر",
+    feeOutOfRange: (min: string, max: string) =>
+      `سعر الكشف لازم يكون بين ${min} و ${max} جنيه`,
+    alreadyAssigned: "الطلب ده اتحدد له فني قبل كده",
+    notSubmitted: "الفني ده لسه مبعتش سعر على الطلب ده",
+  },
   requests: {
     notFound: "الطلب ده مش موجود",
     /** Cancelling one that is already finished, cancelled, or under way. */
@@ -307,5 +319,10 @@ export const messages = {
      * without one - the profile endpoints require it.
      */
     addressMissing: "كمّل عنوانك في حسابك الأول، أو ابعت عنوان الطلب",
+    notDraft: "الطلب ده اتبعت قبل كده",
+    estimationMissing:
+      "لازم تعمل تقييم بالذكاء الاصطناعي الأول قبل ما تبعت الطلب",
+    notEstimable: "الطلب ده مش متاح للتقييم بالذكاء الاصطناعي دلوقتي",
+    pricingMissing: "سعر التقييم مش متوفر للتخصص ده دلوقتي",
   },
 };

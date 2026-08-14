@@ -403,7 +403,10 @@ export const schemas: Record<string, JsonSchema> = {
       "One service request, as its own customer sees it. The address fields are a snapshot taken when the request was filed, not a join onto the profile - the customer may move house, and the job happened where it happened.",
     properties: {
       id: bigIntId("12", "Request id."),
-      customerId: bigIntId("2", "The customer who filed it - always the caller."),
+      customerId: bigIntId(
+        "2",
+        "The customer who filed it - always the caller.",
+      ),
       categoryId: bigIntId("1", "The speciality this needs."),
       categoryName: { type: "string", example: "سباكة" },
       requestType: {
@@ -415,8 +418,7 @@ export const schemas: Record<string, JsonSchema> = {
       title: { type: "string", example: "Kitchen sink is leaking" },
       description: {
         type: "string",
-        example:
-          "Water under the sink since yesterday, the pipe joint is wet.",
+        example: "Water under the sink since yesterday, the pipe joint is wet.",
       },
       status: {
         type: "string",
@@ -590,7 +592,7 @@ export const schemas: Record<string, JsonSchema> = {
       "| --- | --- |",
       "| `COMPLETE_PROFILE` | send a customer to the profile page |",
       "| `SUBMIT_DOCUMENTS` | send a technician to the national ID / criminal record form |",
-      "| `WAITING_FOR_APPROVAL` | show \"under review\" - an admin has to approve |",
+      '| `WAITING_FOR_APPROVAL` | show "under review" - an admin has to approve |',
       "| `VERIFICATION_REJECTED` | let the technician upload the documents again |",
       "| `READY` | open the app |",
       "| `BLOCKED` / `SUSPENDED` | show the moderation message |",
@@ -633,7 +635,7 @@ export const schemas: Record<string, JsonSchema> = {
   JobClosedEvent: {
     type: "object",
     description:
-      "`job:closed` → technician. Take that card off the screen. The reason exists because the app shows a different sentence for each - that is the only thing stopping this being a single \"gone\" event.",
+      '`job:closed` → technician. Take that card off the screen. The reason exists because the app shows a different sentence for each - that is the only thing stopping this being a single "gone" event.',
     properties: {
       requestId: bigIntId("12", "The request whose card should go."),
       reason: {
@@ -766,6 +768,12 @@ export const responses: Record<string, unknown> = {
   NotFound: errorResponse("No such record."),
   Conflict: errorResponse(
     "The write clashes with the current state: a duplicate phone or name, a row that is still referenced, or an account that already finished signing up.",
+  ),
+  InsufficientPoints: errorResponse(
+    "The account's points balance is below what this call costs. Top up and try again - nothing was spent.",
+  ),
+  ServiceUnavailable: errorResponse(
+    "A dependency this endpoint relies on - the AI estimation service - is down, timed out, or answered something unparseable. Nothing was charged.",
   ),
   TooManyRequests: errorResponse(
     "Rate limited: another OTP was asked for too soon, or too many wrong codes were tried.",

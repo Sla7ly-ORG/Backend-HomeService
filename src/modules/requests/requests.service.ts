@@ -1,4 +1,5 @@
 import { ApiError } from "../../core/errors.js";
+import { env } from "../../core/env.js";
 import { messages } from "../../core/messages.js";
 import { skipTake } from "../../core/pagination.js";
 import { prisma } from "../../core/prisma.js";
@@ -8,6 +9,8 @@ import type {
   CreateServiceRequestBody,
   ListMyRequestsQuery,
 } from "./requests.schema.js";
+import { estimateProblem } from "../ai/ai.client.js";
+import { spendPoints } from "../points/points.service.js";
 
 /**
  * TASKS 7, 8 & 10 - all database access for service requests.
@@ -70,7 +73,7 @@ const CANCELLABLE_STATUSES: RequestStatus[] = [
  * technician's submitted fee is called today; task 10 renames the enum value to
  * `SUBMITTED` and this list changes with it.
  */
-const OPEN_OFFER_STATUSES = ["PENDING", "ACCEPTED"] as const;
+const OPEN_OFFER_STATUSES = ["PENDING", "SUBMITTED"] as const;
 
 /**
  * TASK 7 - the draft, created the moment the customer submits the description
@@ -307,8 +310,92 @@ export async function estimateServiceRequest(
   customerId: bigint,
   requestId: bigint,
 ) {
-  // TODO(task 8)
-  throw ApiError.notImplemented();
+  const request = await prisma.serviceRequest.findFirst({
+    where: { id: requestId, customerId },
+    include: requestDetailInclude,
+  });
+
+  if (!request) {
+    throw ApiError.notFound(messages.requests.notFound);
+  }
+
+  if (request.requestType !== "AI_ESTIMATION" || request.status !== "PENDING") {
+    throw ApiError.conflict(messages.requests.notEstimable);
+  }
+
+  // Already estimated - hand it back and charge nothing. A retried request
+  // (a client that timed out waiting the first time) must not pay twice.
+  if (request.aiSeverity !== null) {
+    const customer = await prisma.user.findUniqueOrThrow({
+      where: { id: customerId },
+      select: { pointsBalance: true },
+    });
+
+    return { request, pointsCharged: 0, pointsBalance: customer.pointsBalance };
+  }
+
+  // A courtesy check, not the guard - the real one is the conditional update
+  // inside spendPoints below. This just avoids calling out to the model for a
+  // customer who plainly cannot pay for the answer.
+  const customer = await prisma.user.findUniqueOrThrow({
+    where: { id: customerId },
+    select: { pointsBalance: true },
+  });
+  if (customer.pointsBalance < env.AI_ESTIMATION_POINTS_COST) {
+    throw ApiError.paymentRequired();
+  }
+
+  // Outside any transaction: this can take up to AI_TIMEOUT_MS, and holding a
+  // Postgres connection open for that long, a hundred times at once, empties
+  // the pool.
+  const estimate = await estimateProblem({
+    description: request.description,
+    categoryName: request.category.name,
+  });
+
+  const pointsBalance = await prisma.$transaction(async (tx) => {
+    const balance = await spendPoints(
+      tx,
+      customerId,
+      env.AI_ESTIMATION_POINTS_COST,
+      { reason: "AI estimation", serviceRequestId: requestId },
+    );
+
+    // Conditional on aiSeverity still being null: a concurrent call that won
+    // the race already wrote it, and this one should not overwrite it with a
+    // second (possibly different) prediction after having also just paid -
+    // throwing here rolls the spend above back too, since both are in this
+    // transaction.
+    const { count } = await tx.serviceRequest.updateMany({
+      where: { id: requestId, aiSeverity: null },
+      data: {
+        aiRequestId: estimate.aiRequestId,
+        aiSeverity: estimate.severity,
+        aiConfidence: estimate.confidence,
+        aiNeedsReview: estimate.needsReview,
+        // Never actualSeverity - that column means "a human looked".
+      },
+    });
+
+    if (count === 0) {
+      throw ApiError.conflict(messages.requests.notEstimable);
+    }
+
+    return balance;
+  });
+
+  // Outside the transaction, same reasoning as everywhere else in this file:
+  // the detail `include` must not run on the transaction's client.
+  const updated = await prisma.serviceRequest.findUniqueOrThrow({
+    where: { id: requestId },
+    include: requestDetailInclude,
+  });
+
+  return {
+    request: updated,
+    pointsCharged: env.AI_ESTIMATION_POINTS_COST,
+    pointsBalance,
+  };
 }
 
 /**

@@ -1,6 +1,10 @@
 import type { Prisma, ServiceRequest } from "../../generated/prisma/client.js";
 import { ApiError } from "../../core/errors.js";
 import type { ListJobsQuery, SubmitOfferBody } from "./offers.schema.js";
+import { boundingBox, distanceKm } from "../../core/geo.js";
+import { messages } from "../../core/messages.js";
+import { prisma } from "../../core/prisma.js";
+import { skipTake } from "../../core/pagination.js";
 
 /**
  * TASKS 10 & 11 - the fan-out, the technician's feed, and the customer's
@@ -20,6 +24,17 @@ import type { ListJobsQuery, SubmitOfferBody } from "./offers.schema.js";
  *   OFFER_FEE_MIN_MULTIPLIER 0.5
  *   OFFER_FEE_MAX_MULTIPLIER 3
  */
+export const FANOUT_RADIUS_KM = 25;
+export const FANOUT_MAX_TECHNICIANS = 50;
+export const MAX_OFFERS_PER_REQUEST = 5;
+export const OFFER_FEE_MIN_MULTIPLIER = 0.5;
+export const OFFER_FEE_MAX_MULTIPLIER = 3;
+
+const PAST_JOBS_WHERE: Prisma.ServiceRequestWhereInput = {
+  status: {
+    notIn: ["PENDING", "WAITING_FOR_TECHNICIAN", "CANCELLED"],
+  },
+};
 
 /**
  * TASK 10 - one PENDING offer row per eligible technician, inside the publish
@@ -49,9 +64,122 @@ import type { ListJobsQuery, SubmitOfferBody } from "./offers.schema.js";
 export async function fanOutOffers(
   tx: Prisma.TransactionClient,
   request: ServiceRequest,
-) {
-  // TODO(task 10): returns Promise<bigint[]>
-  throw ApiError.notImplemented();
+): Promise<bigint[]> {
+  const origin = {
+    lat: request.serviceLatitude.toNumber(),
+    lng: request.serviceLongitude.toNumber(),
+  };
+
+  /**
+   * First use the bounding box so PostgreSQL can prefilter candidates.
+   * Then use the real Haversine distance in JS to remove the corners.
+   */
+  const box = boundingBox(origin, FANOUT_RADIUS_KM);
+
+  const candidates = await tx.technicianProfile.findMany({
+    where: {
+      categoryId: request.categoryId,
+      verificationStatus: "VERIFIED",
+      isAvailable: true,
+
+      user: {
+        status: "ACTIVE",
+        deletedAt: null,
+
+        latitude: {
+          not: null,
+          gte: box.minLat,
+          lte: box.maxLat,
+        },
+
+        longitude: {
+          not: null,
+          gte: box.minLng,
+          lte: box.maxLng,
+        },
+      },
+    },
+
+    select: {
+      userId: true,
+
+      user: {
+        select: {
+          latitude: true,
+          longitude: true,
+        },
+      },
+    },
+  });
+
+  /**
+   * Remove technicians without coordinates,
+   * calculate the real distance,
+   * keep only technicians inside the radius,
+   * nearest first,
+   * then take at most 50.
+   */
+  const nearbyTechnicians = candidates
+    .map((candidate) => {
+      const { latitude, longitude } = candidate.user;
+
+      if (latitude === null || longitude === null) {
+        return null;
+      }
+
+      return {
+        technicianId: candidate.userId,
+
+        distanceKm: distanceKm(origin, {
+          lat: latitude.toNumber(),
+          lng: longitude.toNumber(),
+        }),
+      };
+    })
+    .filter(
+      (
+        technician,
+      ): technician is {
+        technicianId: bigint;
+        distanceKm: number;
+      } => technician !== null,
+    )
+    .filter((technician) => technician.distanceKm <= FANOUT_RADIUS_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, FANOUT_MAX_TECHNICIANS);
+
+  /**
+   * Zero technicians nearby is NOT an error.
+   *
+   * The request stays open, but a technician who signs up later
+   * will not see this already-published request because the fan-out
+   * has already happened.
+   *
+   * Re-running fan-out later would be a separate future feature.
+   */
+  if (nearbyTechnicians.length === 0) {
+    return [];
+  }
+
+  const technicianIds = nearbyTechnicians.map(
+    (technician) => technician.technicianId,
+  );
+
+  await tx.technicianOffer.createMany({
+    data: technicianIds.map((technicianId) => ({
+      serviceRequestId: request.id,
+      technicianId,
+      status: "PENDING",
+    })),
+
+    skipDuplicates: true,
+  });
+
+  /**
+   * Return user ids because publishServiceRequest needs them
+   * to emit job:new to each technician.
+   */
+  return technicianIds;
 }
 
 /**
@@ -74,8 +202,117 @@ export async function listTechnicianJobs(
   technicianId: bigint,
   query: ListJobsQuery,
 ) {
-  // TODO(task 10): returns { jobs, total }
-  throw ApiError.notImplemented();
+  const status = query.status ?? "PENDING";
+
+  const { skip, take } = skipTake(query);
+
+  const where: Prisma.TechnicianOfferWhereInput = {
+    technicianId,
+    status,
+
+    serviceRequest: {
+      status: "WAITING_FOR_TECHNICIAN",
+    },
+  };
+
+  /**
+   * We need the technician's coordinates once so that each
+   * returned card can contain its own distanceKm.
+   */
+  const technician = await prisma.user.findUnique({
+    where: {
+      id: technicianId,
+    },
+
+    select: {
+      latitude: true,
+      longitude: true,
+    },
+  });
+
+  const [jobs, total] = await Promise.all([
+    prisma.technicianOffer.findMany({
+      where,
+
+      include: {
+        serviceRequest: {
+          include: {
+            category: {
+              include: {
+                pricing: true,
+              },
+            },
+
+            attachments: true,
+
+            customer: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+        },
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
+
+      skip,
+      take,
+    }),
+
+    prisma.technicianOffer.count({
+      where,
+    }),
+  ]);
+
+  const enrichedJobs = jobs.map((job) => {
+    const request = job.serviceRequest;
+
+    let jobDistanceKm = 0;
+
+    if (
+      technician?.latitude !== null &&
+      technician?.latitude !== undefined &&
+      technician?.longitude !== null &&
+      technician?.longitude !== undefined
+    ) {
+      jobDistanceKm = distanceKm(
+        {
+          lat: technician.latitude.toNumber(),
+          lng: technician.longitude.toNumber(),
+        },
+        {
+          lat: request.serviceLatitude.toNumber(),
+          lng: request.serviceLongitude.toNumber(),
+        },
+      );
+    }
+
+    const basePrice = request.category.homeVisitBasePrice.toNumber();
+
+    const minFee = basePrice * OFFER_FEE_MIN_MULTIPLIER;
+
+    const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
+
+    return {
+      offer: job,
+
+      distanceKm: jobDistanceKm,
+
+      feeBounds: {
+        suggested: basePrice.toFixed(2),
+        min: minFee.toFixed(2),
+        max: maxFee.toFixed(2),
+      },
+    };
+  });
+
+  return {
+    jobs: enrichedJobs,
+    total,
+  };
 }
 
 /**
@@ -109,8 +346,246 @@ export async function submitOffer(
   offerId: bigint,
   data: SubmitOfferBody,
 ) {
-  // TODO(task 10)
-  throw ApiError.notImplemented();
+  const result = await prisma.$transaction(async (tx) => {
+    /**
+     * We need the category price to calculate the dynamic bounds.
+     *
+     * This is NOT used to decide whether the offer is still available.
+     * The actual availability check happens in the conditional update below.
+     */
+    const offer = await tx.technicianOffer.findFirst({
+      where: {
+        id: offerId,
+        technicianId,
+      },
+
+      select: {
+        id: true,
+        serviceRequestId: true,
+
+        serviceRequest: {
+          select: {
+            customerId: true,
+
+            category: {
+              select: {
+                homeVisitBasePrice: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!offer) {
+      throw ApiError.conflict(messages.offers.noLongerAvailable);
+    }
+
+    const basePrice =
+      offer.serviceRequest.category.homeVisitBasePrice.toNumber();
+
+    const minFee = basePrice * OFFER_FEE_MIN_MULTIPLIER;
+
+    const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
+
+    /**
+     * Category-dependent validation belongs in the service,
+     * not in Zod.
+     */
+    if (data.consultationFee < minFee || data.consultationFee > maxFee) {
+      throw ApiError.badRequest(
+        messages.offers.feeOutOfRange(minFee.toFixed(2), maxFee.toFixed(2)),
+      );
+    }
+
+    /**
+     * The important concurrency guard.
+     *
+     * All of these must still be true:
+     * - this offer belongs to this technician
+     * - it is still PENDING
+     * - the request is still WAITING_FOR_TECHNICIAN
+     *
+     * If another action changed any of them, count === 0.
+     */
+    const updated = await tx.technicianOffer.updateMany({
+      where: {
+        id: offerId,
+        technicianId,
+        status: "PENDING",
+
+        serviceRequest: {
+          status: "WAITING_FOR_TECHNICIAN",
+        },
+      },
+
+      data: {
+        status: "SUBMITTED",
+        consultationFee: data.consultationFee,
+        submittedAt: new Date(),
+      },
+    });
+
+    if (updated.count === 0) {
+      throw ApiError.conflict(messages.offers.noLongerAvailable);
+    }
+
+    /**
+     * Count submitted offers after this technician successfully
+     * submitted theirs.
+     */
+    const submittedCount = await tx.technicianOffer.count({
+      where: {
+        serviceRequestId: offer.serviceRequestId,
+        status: "SUBMITTED",
+      },
+    });
+
+    /**
+     * More than the allowed number should never remain committed.
+     * Throwing here rolls the whole transaction back.
+     */
+    if (submittedCount > MAX_OFFERS_PER_REQUEST) {
+      throw ApiError.conflict(messages.offers.enoughTechnicians);
+    }
+
+    let closedTechnicianIds: bigint[] = [];
+
+    /**
+     * Exactly 5 submitted offers:
+     * close all remaining PENDING invitations.
+     */
+    if (submittedCount === MAX_OFFERS_PER_REQUEST) {
+      const pendingOffers = await tx.technicianOffer.findMany({
+        where: {
+          serviceRequestId: offer.serviceRequestId,
+          status: "PENDING",
+        },
+
+        select: {
+          technicianId: true,
+        },
+      });
+
+      closedTechnicianIds = pendingOffers.map((offer) => offer.technicianId);
+
+      await tx.technicianOffer.updateMany({
+        where: {
+          serviceRequestId: offer.serviceRequestId,
+          status: "PENDING",
+        },
+
+        data: {
+          status: "NOT_SELECTED",
+        },
+      });
+    }
+
+    return {
+      requestId: offer.serviceRequestId,
+      customerId: offer.serviceRequest.customerId,
+      closedTechnicianIds,
+    };
+  });
+
+  /**
+   * Everything below happens AFTER the transaction commits.
+   *
+   * Never emit inside the transaction.
+   */
+  const updatedOffer = await prisma.technicianOffer.findUniqueOrThrow({
+    where: {
+      id: offerId,
+    },
+
+    include: {
+      technician: {
+        include: {
+          technicianProfile: {
+            include: {
+              category: true,
+            },
+          },
+
+          _count: {
+            select: {
+              requestsAsTechnician: {
+                where: PAST_JOBS_WHERE,
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  /**
+   * Get request coordinates for the customer-side offer mapper.
+   */
+  const request = await prisma.serviceRequest.findUniqueOrThrow({
+    where: {
+      id: result.requestId,
+    },
+
+    select: {
+      serviceLatitude: true,
+      serviceLongitude: true,
+    },
+  });
+
+  /**
+   * Get technician coordinates.
+   */
+  const technician = await prisma.user.findUnique({
+    where: {
+      id: updatedOffer.technicianId,
+    },
+
+    select: {
+      latitude: true,
+      longitude: true,
+    },
+  });
+
+  let jobDistanceKm = 0;
+
+  if (
+    technician?.latitude !== null &&
+    technician?.latitude !== undefined &&
+    technician?.longitude !== null &&
+    technician?.longitude !== undefined
+  ) {
+    jobDistanceKm = distanceKm(
+      {
+        lat: request.serviceLatitude.toNumber(),
+        lng: request.serviceLongitude.toNumber(),
+      },
+      {
+        lat: technician.latitude.toNumber(),
+        lng: technician.longitude.toNumber(),
+      },
+    );
+  }
+
+  /**
+   * Task 10 realtime events.
+   */
+  const { emitOfferNew, emitJobClosed } =
+    await import("../../realtime/realtime.emit.js");
+
+  const { toOfferForCustomerResponse } = await import("./offers.mapper.js");
+
+  emitOfferNew(
+    result.customerId,
+    result.requestId,
+    toOfferForCustomerResponse(updatedOffer, jobDistanceKm),
+  );
+
+  if (result.closedTechnicianIds.length > 0) {
+    emitJobClosed(result.closedTechnicianIds, result.requestId, "FULL");
+  }
+
+  return updatedOffer;
 }
 
 /**
@@ -121,8 +596,31 @@ export async function submitOffer(
  * that asked for it.
  */
 export async function declineOffer(technicianId: bigint, offerId: bigint) {
-  // TODO(task 10)
-  throw ApiError.notImplemented();
+  const { count } = await prisma.technicianOffer.updateMany({
+    where: {
+      id: offerId,
+      technicianId,
+      status: "PENDING",
+
+      serviceRequest: {
+        status: "WAITING_FOR_TECHNICIAN",
+      },
+    },
+
+    data: {
+      status: "DECLINED",
+    },
+  });
+
+  if (count === 0) {
+    throw ApiError.conflict(messages.offers.noLongerAvailable);
+  }
+
+  return prisma.technicianOffer.findUniqueOrThrow({
+    where: {
+      id: offerId,
+    },
+  });
 }
 
 /**
