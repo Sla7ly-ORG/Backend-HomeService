@@ -34,6 +34,18 @@ const envSchema = z.object({
   // HTTP request before it is a socket, so a dashboard served from another host
   // is refused at that handshake unless its origin is listed here.
   SOCKET_CORS_ORIGIN: z.string().min(1).default("*"),
+
+  // The classifier behind "describe it with an AI" - see
+  // src/modules/ai/ai.client.ts, the only file that knows it exists. Optional
+  // in development: an unconfigured URL falls back to a deterministic stub so
+  // tasks 9-11 can be built before the model is reachable. Required in
+  // production - checked below, once parsing succeeds.
+  AI_SERVICE_URL: z.string().url().optional(),
+  AI_SERVICE_TOKEN: z.string().min(1).optional(),
+  // How long to wait for a prediction before treating the service as down.
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  // What "describe it with an AI" costs the customer, in points.
+  AI_ESTIMATION_POINTS_COST: z.coerce.number().int().positive().default(50),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -44,6 +56,16 @@ if (!parsed.success) {
     console.error(`  - ${issue.path.join(".")}: ${issue.message}`);
   }
   console.error("Copy .env.example to .env and fill in the values.");
+  process.exit(1);
+}
+
+// A missing AI_SERVICE_URL is a convenience in development - see the stub in
+// ai.client.ts. In production it would silently serve every estimate off the
+// stub and never tell anyone, so it fails loudly at startup instead.
+if (parsed.data.NODE_ENV === "production" && !parsed.data.AI_SERVICE_URL) {
+  console.error(
+    "AI_SERVICE_URL is required in production - the AI estimation stub must never run for real customers.",
+  );
   process.exit(1);
 }
 

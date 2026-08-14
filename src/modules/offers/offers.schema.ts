@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { idParams } from "../../core/fields.js";
 import { paginationQuery } from "../../core/pagination.js";
+import { messages } from "../../core/messages.js";
 
 // TASKS 10 & 11 - offers. One row per (request, technician).
 //
@@ -23,7 +24,14 @@ export const jobIdParams = idParams;
  * depends on which offer row this is, and a schema cannot see the database.
  * Shape is validated here; the range is validated in the service.
  */
-export const submitOfferBody = z.object({});
+const consultationFee = z.coerce
+  .number()
+  .positive()
+  .max(99_999_999.99)
+  .refine((n) => Number(n.toFixed(2)) === n, {
+    message: messages.fields.feeDecimals,
+  });
+export const submitOfferBody = z.object({ consultationFee });
 
 /**
  * GET /api/v1/technician/jobs - the feed.
@@ -34,7 +42,9 @@ export const submitOfferBody = z.object({});
  * Not SELECTED or NOT_SELECTED: those are the customer's side of the story and
  * there is no screen for them.
  */
-export const listJobsQuery = paginationQuery;
+export const listJobsQuery = paginationQuery.extend({
+  status: z.enum(["PENDING", "SUBMITTED", "DECLINED"]).optional(),
+});
 
 export type SubmitOfferBody = z.infer<typeof submitOfferBody>;
 export type ListJobsQuery = z.infer<typeof listJobsQuery>;

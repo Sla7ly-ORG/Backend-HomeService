@@ -33,13 +33,84 @@ export type FeeBounds = { suggested: string; min: string; max: string };
  * This is also the payload of the `job:new` socket event, so the app renders a
  * live card and a fetched card with one piece of code.
  */
+type TechnicianJobOffer = TechnicianOffer & {
+  serviceRequest: {
+    id: bigint;
+    title: string;
+    description: string;
+    requestType: string;
+    serviceCity: string;
+    aiSeverity: string | null;
+
+    category: {
+      name: string;
+      pricing: Array<{
+        severity: string;
+        minPrice: any;
+        maxPrice: any;
+      }>;
+    };
+
+    attachments: Array<{
+      imageUrl: string;
+    }>;
+
+    customer: {
+      fullName: string | null;
+    };
+  };
+};
+
+/**
+ * TASK 10 - one card in the technician's feed.
+ */
 export function toTechnicianJobResponse(
-  offer: TechnicianOffer,
+  offer: TechnicianJobOffer,
   distanceKm: number,
   fee: FeeBounds,
 ) {
-  // TODO(task 10)
-  throw ApiError.notImplemented();
+  const request = offer.serviceRequest;
+
+  const aiPricing = request.aiSeverity
+    ? request.category.pricing.find(
+        (pricing) => pricing.severity === request.aiSeverity,
+      )
+    : undefined;
+
+  return {
+    id: offer.id.toString(),
+
+    status: offer.status,
+
+    request: {
+      id: request.id.toString(),
+      title: request.title,
+      description: request.description,
+      categoryName: request.category.name,
+      requestType: request.requestType,
+
+      images: request.attachments.map((attachment) => attachment.imageUrl),
+    },
+
+    aiEstimation: request.aiSeverity
+      ? {
+          severity: request.aiSeverity,
+
+          minPrice: aiPricing ? aiPricing.minPrice.toFixed(2) : null,
+
+          maxPrice: aiPricing ? aiPricing.maxPrice.toFixed(2) : null,
+        }
+      : null,
+
+    customer: {
+      fullName: request.customer.fullName,
+      serviceCity: request.serviceCity,
+    },
+
+    distanceKm: distanceKm.toFixed(2),
+
+    fee,
+  };
 }
 
 /**

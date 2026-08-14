@@ -62,11 +62,11 @@ enum RequestStatus {
 }
 
 enum OfferStatus {
-  PENDING
-  ACCEPTED
-  DECLINED
-  SELECTED
-  NOT_SELECTED
+  PENDING       // in their feed, unanswered
+  SUBMITTED     // they sent a fee — was ACCEPTED
+  DECLINED      // they dismissed it
+  SELECTED      // the customer took this one
+  NOT_SELECTED  // closed: someone else was taken, or the request died
 }
 
 enum PointsTransactionType {
@@ -130,6 +130,7 @@ model User {
   @@index([role])
   @@index([status])
   @@index([createdAt])
+  @@index([latitude, longitude])
   @@map("users")
 }
 
@@ -318,13 +319,14 @@ model TechnicianOffer {
   serviceRequestId BigInt      @map("service_request_id")
   technicianId     BigInt      @map("technician_id")
   status           OfferStatus @default(PENDING)
-  acceptedAt       DateTime?   @map("accepted_at") @db.Timestamptz(6)
+  consultationFee  Decimal?    @map("consultation_fee") @db.Decimal(10, 2)
+  submittedAt      DateTime?   @map("submitted_at") @db.Timestamptz(6)
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
   technician     User           @relation(fields: [technicianId], references: [id], onDelete: Cascade)
-
+  
   @@unique([serviceRequestId, technicianId])
   @@index([technicianId])
   @@index([status])

@@ -1,5 +1,3 @@
-import { ApiError } from "./errors.js";
-
 /**
  * TASK 10 - "which technicians are near this job?", in two functions.
  *
@@ -25,15 +23,19 @@ export type BoundingBox = {
  * Haversine. Earth is not a sphere, but at 25 km the error is metres and the
  * number is only ever used to sort a list and print "3.4 km away".
  */
+
+function toRad(deg: number): number {
+  return (deg * Math.PI) / 180;
+}
+
 export function distanceKm(a: Point, b: Point): number {
-  // TODO(task 10):
-  //   const R = 6371;                         // km, mean Earth radius
-  //   dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng)
-  //   h = sin(dLat/2)^2 + cos(toRad(a.lat)) * cos(toRad(b.lat)) * sin(dLng/2)^2
-  //   return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  //
-  // Write `toRad` as a private helper in this file. Degrees in, always.
-  throw ApiError.notImplemented();
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 /**
@@ -49,15 +51,18 @@ export function distanceKm(a: Point, b: Point): number {
  * the equator and shrinks with the cosine of the latitude, which is why the two
  * axes are not computed the same way.
  */
+
+const KM_PER_DEGREE_LAT = 111.32;
+
 export function boundingBox(center: Point, radiusKm: number): BoundingBox {
-  // TODO(task 10):
-  //   const KM_PER_DEGREE_LAT = 111.32;       // name it, do not inline it
-  //   latDelta = radiusKm / KM_PER_DEGREE_LAT
-  //   lngDelta = radiusKm / (KM_PER_DEGREE_LAT * Math.cos(toRad(center.lat)))
-  //   return { minLat, maxLat, minLng, maxLng }
-  //
-  // Egypt is nowhere near a pole or the date line, so clamping latitude to
-  // +/-90 and wrapping longitude past +/-180 are not cases you have to handle.
-  // Say so in a comment rather than half-handling them.
-  throw ApiError.notImplemented();
+  const latDelta = radiusKm / KM_PER_DEGREE_LAT;
+  const lngDelta = radiusKm / (KM_PER_DEGREE_LAT * Math.cos(toRad(center.lat)));
+
+  // مصر مش قريبة من القطبين ولا خط التاريخ، فمفيش داعي نعمل clamp/wrap.
+  return {
+    minLat: center.lat - latDelta,
+    maxLat: center.lat + latDelta,
+    minLng: center.lng - lngDelta,
+    maxLng: center.lng + lngDelta,
+  };
 }
