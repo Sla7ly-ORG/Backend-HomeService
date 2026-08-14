@@ -1,6 +1,8 @@
 import type { Prisma, ServiceRequest } from "../../generated/prisma/client.js";
+import type { Severity } from "../../generated/prisma/enums.js";
 import { ApiError } from "../../core/errors.js";
 import type { ListJobsQuery, SubmitOfferBody } from "./offers.schema.js";
+import type { OfferBounds } from "./offers.mapper.js";
 import { boundingBox, distanceKm } from "../../core/geo.js";
 import { messages } from "../../core/messages.js";
 import { prisma } from "../../core/prisma.js";
@@ -35,6 +37,71 @@ const PAST_JOBS_WHERE: Prisma.ServiceRequestWhereInput = {
     notIn: ["PENDING", "WAITING_FOR_TECHNICIAN", "CANCELLED"],
   },
 };
+
+type PricedCategory = {
+  homeVisitBasePrice: Prisma.Decimal;
+  pricing: Array<{
+    severity: Severity;
+    minPrice: Prisma.Decimal;
+    maxPrice: Prisma.Decimal;
+  }>;
+};
+
+/**
+ * TASK 10 - what the technician is allowed to charge, for each kind of offer.
+ *
+ * Two different questions with two different answers. A consultation is priced
+ * off `homeVisitBasePrice`, because coming out costs about the same whatever
+ * turns out to be wrong. A full fix is priced off `category_pricing`, because
+ * it *is* the repair - and when the AI has already sized the problem, the band
+ * for that severity is the honest range to hold them to.
+ *
+ * With no severity - a CONSULTATION request never asks the model, and an
+ * AI_ESTIMATION the customer never paid for has no answer either - the widest
+ * band the category has is the only defensible bound. The technician has looked
+ * at a photo we have not classified, so we are in no position to tell them the
+ * job is a MEDIUM; all we can say is that plumbing work in this country does not
+ * cost 40 000 pounds.
+ */
+function offerBounds(
+  category: PricedCategory,
+  aiSeverity: Severity | null,
+): OfferBounds {
+  const basePrice = category.homeVisitBasePrice.toNumber();
+
+  const consultation = {
+    suggested: basePrice.toFixed(2),
+    min: (basePrice * OFFER_FEE_MIN_MULTIPLIER).toFixed(2),
+    max: (basePrice * OFFER_FEE_MAX_MULTIPLIER).toFixed(2),
+  };
+
+  if (category.pricing.length === 0) {
+    return { consultation, fullFix: null };
+  }
+
+  const band = aiSeverity
+    ? category.pricing.find((row) => row.severity === aiSeverity)
+    : undefined;
+
+  const min = band
+    ? band.minPrice.toNumber()
+    : Math.min(...category.pricing.map((row) => row.minPrice.toNumber()));
+
+  const max = band
+    ? band.maxPrice.toNumber()
+    : Math.max(...category.pricing.map((row) => row.maxPrice.toNumber()));
+
+  return {
+    consultation,
+    fullFix: {
+      // The middle of the band, not its floor: a prefill at the minimum reads
+      // as the expected price and quietly pushes every quote down.
+      suggested: ((min + max) / 2).toFixed(2),
+      min: min.toFixed(2),
+      max: max.toFixed(2),
+    },
+  };
+}
 
 /**
  * TASK 10 - one PENDING offer row per eligible technician, inside the publish
@@ -290,22 +357,15 @@ export async function listTechnicianJobs(
       );
     }
 
-    const basePrice = request.category.homeVisitBasePrice.toNumber();
-
-    const minFee = basePrice * OFFER_FEE_MIN_MULTIPLIER;
-
-    const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
-
     return {
       offer: job,
 
       distanceKm: jobDistanceKm,
 
-      feeBounds: {
-        suggested: basePrice.toFixed(2),
-        min: minFee.toFixed(2),
-        max: maxFee.toFixed(2),
-      },
+      // Both sets, every card: the technician decides which kind of offer to
+      // make while looking at the job, so the app needs both inputs bounded
+      // before they have picked one.
+      feeBounds: offerBounds(request.category, request.aiSeverity),
     };
   });
 
@@ -318,13 +378,14 @@ export async function listTechnicianJobs(
 /**
  * TASK 10 - the technician names their fee. One transaction:
  *
- *  1. Read the request's category for the bounds -
- *     `homeVisitBasePrice * OFFER_FEE_MIN_MULTIPLIER` up to
- *     `* OFFER_FEE_MAX_MULTIPLIER`. Outside them -> 400
- *     `messages.offers.feeOutOfRange(min, max)`.
+ *  1. Read the request's category and severity for the bounds - see
+ *     `offerBounds`, which answers for both kinds of offer. Outside the band
+ *     for the kind that was sent -> 400 `messages.offers.feeOutOfRange` or
+ *     `fixPriceOutOfRange`. A FULL_FIX on a category with no price bands is
+ *     refused outright: there is nothing to bound it with.
  *  2. `updateMany({ where: { id: offerId, technicianId, status: "PENDING",
  *     serviceRequest: { status: "WAITING_FOR_TECHNICIAN" } },
- *     data: { status: "SUBMITTED", consultationFee, submittedAt: new Date() } })`
+ *     data: { status: "SUBMITTED", offerType, price, submittedAt: new Date() } })`
  *     `count === 0` -> 409 `messages.offers.noLongerAvailable`, which covers
  *     all of: not mine, already answered, request cancelled, technician already
  *     chosen. One message, because the technician's next move is the same in
@@ -367,9 +428,14 @@ export async function submitOffer(
           select: {
             customerId: true,
 
+            // The severity the bounds narrow to, when the customer paid for
+            // one. Null on a CONSULTATION, and on an estimate never bought.
+            aiSeverity: true,
+
             category: {
               select: {
                 homeVisitBasePrice: true,
+                pricing: true,
               },
             },
           },
@@ -381,20 +447,28 @@ export async function submitOffer(
       throw ApiError.conflict(messages.offers.noLongerAvailable);
     }
 
-    const basePrice =
-      offer.serviceRequest.category.homeVisitBasePrice.toNumber();
-
-    const minFee = basePrice * OFFER_FEE_MIN_MULTIPLIER;
-
-    const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
+    const bounds = offerBounds(
+      offer.serviceRequest.category,
+      offer.serviceRequest.aiSeverity,
+    );
 
     /**
      * Category-dependent validation belongs in the service,
-     * not in Zod.
+     * not in Zod - and which band applies depends on what the technician says
+     * they are selling.
      */
-    if (data.consultationFee < minFee || data.consultationFee > maxFee) {
+    if (data.offerType === "FULL_FIX" && bounds.fullFix === null) {
+      throw ApiError.badRequest(messages.offers.fullFixUnavailable);
+    }
+
+    const band =
+      data.offerType === "FULL_FIX" ? bounds.fullFix! : bounds.consultation;
+
+    if (data.price < Number(band.min) || data.price > Number(band.max)) {
       throw ApiError.badRequest(
-        messages.offers.feeOutOfRange(minFee.toFixed(2), maxFee.toFixed(2)),
+        data.offerType === "FULL_FIX"
+          ? messages.offers.fixPriceOutOfRange(band.min, band.max)
+          : messages.offers.feeOutOfRange(band.min, band.max),
       );
     }
 
@@ -421,7 +495,8 @@ export async function submitOffer(
 
       data: {
         status: "SUBMITTED",
-        consultationFee: data.consultationFee,
+        offerType: data.offerType,
+        price: data.price,
         submittedAt: new Date(),
       },
     });
@@ -668,12 +743,18 @@ export async function listRequestOffers(customerId: bigint, requestId: bigint) {
  *  3. Every other offer on the request -> `NOT_SELECTED`, collecting those
  *     technician ids on the way.
  *
- * `visitFee` is **the accepted offer's `consultationFee`**, read off the offer
- * row inside the transaction and copied onto the request. Not the category's
- * base price, and never a number from the request body - a fee the client sends
- * is a fee the client chose. It is a snapshot for the same reason the address
- * is: that technician will price their next job differently, and last month's
- * job must not move with them.
+ * `visitFee` is **the accepted offer's `price`**, read off the offer row inside
+ * the transaction and copied onto the request. Not the category's base price,
+ * and never a number from the request body - a fee the client sends is a fee
+ * the client chose. It is a snapshot for the same reason the address is: that
+ * technician will price their next job differently, and last month's job must
+ * not move with them.
+ *
+ * **Copy `offerType` across as `agreedOfferType` in the same write.** The
+ * number alone is ambiguous now that a technician can quote the repair: 850
+ * means "he is coming for 850" or "the whole job is 850", and the customer's
+ * screen has to say which. Two columns written together, or the request
+ * remembers a price whose meaning it has lost.
  *
  * After the commit, the three emits that make the job vanish from everyone
  * else's screen - the one part of this requirement the app cannot do itself:

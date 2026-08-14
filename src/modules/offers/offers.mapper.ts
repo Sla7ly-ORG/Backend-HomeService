@@ -9,8 +9,21 @@ import { ApiError } from "../../core/errors.js";
 // its category, its attachments, the estimation and the technician's profile.
 // Widen the parameter types as you write them.
 
-/** The fee input's prefill and its limits, computed by the service. */
-export type FeeBounds = { suggested: string; min: string; max: string };
+/** One fee input's prefill and its limits, computed by the service. */
+export type Bounds = { suggested: string; min: string; max: string };
+
+/**
+ * Both kinds of offer, bounded. The technician picks which one they are making
+ * while looking at the card, so the card carries the limits for both.
+ *
+ * `fullFix` is null when the category has no `category_pricing` rows - there is
+ * nothing to bound a repair price with, and the app should hide that option
+ * rather than send a number the service will refuse.
+ */
+export type OfferBounds = {
+  consultation: Bounds;
+  fullFix: Bounds | null;
+};
 
 /**
  * TASK 10 - one card in the technician's feed.
@@ -18,8 +31,9 @@ export type FeeBounds = { suggested: string; min: string; max: string };
  * Offer id and status, the problem (title, description, photos, category name),
  * the AI's severity, summary and price range - `null` on a CONSULTATION, which
  * never had an estimate - and of the customer **only** `fullName`,
- * `serviceCity` and `distanceKm`. Plus the `fee` block, so the app can build
- * the fee input without knowing our multipliers.
+ * `serviceCity` and `distanceKm`. Plus the `fee` block - both kinds, bounded -
+ * so the app can build either fee input without knowing our multipliers, and
+ * hide the full-fix one when `fee.fullFix` is null.
  *
  * **No phone. No `serviceAddress`. No exact coordinates.** Fifty technicians
  * receive this card and at most one gets the job; the other forty-nine have no
@@ -67,7 +81,7 @@ type TechnicianJobOffer = TechnicianOffer & {
 export function toTechnicianJobResponse(
   offer: TechnicianJobOffer,
   distanceKm: number,
-  fee: FeeBounds,
+  fee: OfferBounds,
 ) {
   const request = offer.serviceRequest;
 
@@ -116,7 +130,7 @@ export function toTechnicianJobResponse(
 /**
  * TASK 11 - one card the customer chooses from.
  *
- * `consultationFee` (2dp string), `submittedAt`, and the technician's
+ * `offerType`, `price` (2dp string), `submittedAt`, and the technician's
  * `fullName`, `profileImage`, `overallRating`, `totalReviews`,
  * `pastOrdersCount`, category name, `city` and `distanceKm` (2dp string).
  *
