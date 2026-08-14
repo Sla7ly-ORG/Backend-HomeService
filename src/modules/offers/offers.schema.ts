@@ -12,26 +12,32 @@ import { messages } from "../../core/messages.js";
 export const jobIdParams = idParams;
 
 /**
- * POST /api/v1/technician/jobs/:id/offer - the technician's price for coming
- * out.
+ * POST /api/v1/technician/jobs/:id/offer - the technician's price, and what it
+ * buys.
  *
- * TODO(task 10): { consultationFee: positive, at most 2 decimal places, capped
- * at 99999999.99 to match the Decimal(10, 2) column - copy the price rules from
- * categories.schema.ts. }
+ * `offerType` decides which: `CONSULTATION` is the old behaviour - "I will come
+ * and look for this much" - and `FULL_FIX` is a technician who recognised the
+ * problem from the photo quoting the whole repair, so the customer is not asked
+ * to pay a second time when the visit is over.
  *
- * The bounds that actually matter - half to three times the category's
- * `homeVisitBasePrice` - are **not** here. They depend on the category, which
- * depends on which offer row this is, and a schema cannot see the database.
- * Shape is validated here; the range is validated in the service.
+ * The bounds that actually matter are **not** here, and now there are two sets
+ * of them: a consultation is half to three times the category's
+ * `homeVisitBasePrice`, a full fix is bounded by the `category_pricing` band.
+ * Both depend on rows a schema cannot see. Shape is validated here; the range is
+ * validated in the service, against the type that came with it.
  */
-const consultationFee = z.coerce
+const price = z.coerce
   .number()
   .positive()
   .max(99_999_999.99)
   .refine((n) => Number(n.toFixed(2)) === n, {
     message: messages.fields.feeDecimals,
   });
-export const submitOfferBody = z.object({ consultationFee });
+
+export const submitOfferBody = z.object({
+  offerType: z.enum(["CONSULTATION", "FULL_FIX"]),
+  price,
+});
 
 /**
  * GET /api/v1/technician/jobs - the feed.

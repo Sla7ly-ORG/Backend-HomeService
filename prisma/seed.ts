@@ -28,6 +28,7 @@ import { pgConnectionConfig } from "../src/core/db-url.js";
 import { governorateCodes } from "../src/core/national-id.js";
 import {
   OfferStatus,
+  OfferType,
   RequestStatus,
   RequestType,
   Severity,
@@ -1044,6 +1045,43 @@ async function seedServiceRequests(
 
       const offerees = faker.helpers.arrayElements(others, offereeCount);
 
+      /**
+       * A technician either quotes the visit or the whole repair, and the
+       * number has to match the choice - a full fix priced like a call-out is
+       * exactly the row that makes a seeded database lie to you. Same two
+       * rules the service enforces: a consultation sits inside half to three
+       * times `homeVisitBasePrice`, a full fix inside the category's bands.
+       *
+       * Most technicians still ask to look first. Quoting a repair off a photo
+       * is the confident case, not the common one.
+       */
+      const quote = () => {
+        if (faker.datatype.boolean({ probability: 0.3 })) {
+          return {
+            offerType: OfferType.FULL_FIX,
+            price: money(
+              faker.number.int({
+                min: category.bands.SMALL.min,
+                max: category.bands.LARGE.max,
+              }),
+            ),
+          };
+        }
+
+        return {
+          offerType: OfferType.CONSULTATION,
+          price: money(
+            faker.number.int({
+              min: Math.ceil(category.homeVisitBasePrice * 0.5),
+              max: Math.floor(category.homeVisitBasePrice * 3),
+            }),
+          ),
+        };
+      };
+
+      // The one the customer took, so the request can record what was agreed.
+      const selectedQuote = selected ? quote() : null;
+
       const offers = [
         // Exactly one SELECTED offer for an assigned request.
         ...(selected
@@ -1053,14 +1091,9 @@ async function seedServiceRequests(
 
                 status: OfferStatus.SELECTED,
 
-                // The technician submitted a fee before the customer selected
-                // this offer.
-                consultationFee: money(
-                  faker.number.int({
-                    min: category.bands.MEDIUM.min,
-                    max: category.bands.LARGE.max,
-                  }),
-                ),
+                // The technician answered with a price before the customer
+                // selected this offer.
+                ...selectedQuote!,
 
                 submittedAt: minutesAfter(
                   createdAt,
@@ -1119,21 +1152,17 @@ async function seedServiceRequests(
               )
             : null;
 
-          const consultationFee = submitted
-            ? money(
-                faker.number.int({
-                  min: category.bands.MEDIUM.min,
-                  max: category.bands.LARGE.max,
-                }),
-              )
-            : null;
+          // A price and the type it belongs to are written together or not at
+          // all - the CHECK constraint on the table says so, and a PENDING
+          // invitation has neither.
+          const priced = submitted ? quote() : { offerType: null, price: null };
 
           return {
             technicianId: technician.id,
 
             status: offerStatus,
 
-            consultationFee,
+            ...priced,
 
             submittedAt,
 
@@ -1222,6 +1251,10 @@ async function seedServiceRequests(
           distanceKm: distanceKm === null ? null : money(distanceKm),
 
           visitFee: visitFee === null ? null : money(visitFee),
+
+          // What the accepted offer was selling. Null until one is accepted,
+          // which is why it tracks `selected` and not the request's status.
+          agreedOfferType: selectedQuote ? selectedQuote.offerType : null,
 
           status,
 

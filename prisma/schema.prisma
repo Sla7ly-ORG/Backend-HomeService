@@ -69,6 +69,16 @@ enum OfferStatus {
   NOT_SELECTED  // closed: someone else was taken, or the request died
 }
 
+// What the technician's number buys. A technician who cannot tell from the
+// photo quotes a visit; one who recognises the problem quotes the repair
+// outright and the customer skips paying twice. The travelling, arriving and
+// working are identical either way - this only changes what was agreed, and
+// what the two of them owe each other when it is done.
+enum OfferType {
+  CONSULTATION // "I will come and look, for this much"
+  FULL_FIX     // "I know what this is - this much, all in"
+}
+
 enum PointsTransactionType {
   TOPUP
   SPEND
@@ -242,6 +252,13 @@ model ServiceRequest {
   serviceLongitude Decimal       @map("service_longitude") @db.Decimal(11, 8)
   distanceKm       Decimal?      @map("distance_km") @db.Decimal(10, 2)
   visitFee         Decimal?      @map("visit_fee") @db.Decimal(10, 2)
+
+  // What the accepted offer was, frozen next to the number it froze. `visitFee`
+  // alone is ambiguous once a technician can quote the whole repair: 850 means
+  // "he is coming for 850" or "the job costs 850, everything included", and the
+  // screen has to say which. Null until an offer is accepted.
+  agreedOfferType  OfferType?    @map("agreed_offer_type")
+
   status           RequestStatus @default(PENDING)
 
   // The AI's answer, inlined rather than kept in an `ai_estimations` side table.
@@ -319,14 +336,25 @@ model TechnicianOffer {
   serviceRequestId BigInt      @map("service_request_id")
   technicianId     BigInt      @map("technician_id")
   status           OfferStatus @default(PENDING)
-  consultationFee  Decimal?    @map("consultation_fee") @db.Decimal(10, 2)
+
+  // One offer carries one number, and `offerType` says what it buys. Two
+  // columns - a consultation fee and a repair price - would need an "exactly
+  // one of these is set" rule that nothing in the database can enforce.
+  //
+  // Both are null until the technician answers: a PENDING row is an invitation,
+  // not an offer. They are written together and only together, which is what
+  // the CHECK constraint in the migration holds to.
+  offerType        OfferType?  @map("offer_type")
+  price            Decimal?    @db.Decimal(10, 2)
+
   submittedAt      DateTime?   @map("submitted_at") @db.Timestamptz(6)
   createdAt        DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
   technician     User           @relation(fields: [technicianId], references: [id], onDelete: Cascade)
-  
+
+
   @@unique([serviceRequestId, technicianId])
   @@index([technicianId])
   @@index([status])

@@ -131,7 +131,8 @@ const fieldLabels: Record<string, string> = {
   requestType: "نوع الطلب",
   serviceAddress: "عنوان الطلب",
   serviceCity: "مدينة الطلب",
-  consultationFee: "سعر الكشف",
+  price: "السعر",
+  offerType: "نوع العرض",
 };
 
 export function fieldLabel(field: string): string {
@@ -306,6 +307,15 @@ export const messages = {
     enoughTechnicians: "وصل العدد المسموح بيه من الفنيين اللي بعتوا سعر",
     feeOutOfRange: (min: string, max: string) =>
       `سعر الكشف لازم يكون بين ${min} و ${max} جنيه`,
+    /** The same guard, for a technician quoting the repair itself. */
+    fixPriceOutOfRange: (min: string, max: string) =>
+      `سعر الإصلاح لازم يكون بين ${min} و ${max} جنيه`,
+    /**
+     * A full fix is bounded by the category's price bands, so a category with
+     * no bands has nothing to bound it - the technician quotes a consultation
+     * instead until an admin fills the pricing in.
+     */
+    fullFixUnavailable: "التخصص ده لسه مفيهوش أسعار إصلاح، ابعت سعر كشف",
     alreadyAssigned: "الطلب ده اتحدد له فني قبل كده",
     notSubmitted: "الفني ده لسه مبعتش سعر على الطلب ده",
   },
