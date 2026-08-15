@@ -1,5 +1,5 @@
-import type { TechnicianOffer } from "../../generated/prisma/client.js";
-import { ApiError } from "../../core/errors.js";
+import type { Prisma } from "../../generated/prisma/client.js";
+import { offerForCustomerCardInclude, technicianJobInclude } from "./offers.service.js";
 
 // TASKS 10 & 11. Two audiences, two shapes, two functions - the same rule as
 // toTechnicianProfileResponse and toTechnicianProfileAdminResponse in
@@ -33,39 +33,12 @@ export type FeeBounds = { suggested: string; min: string; max: string };
  * This is also the payload of the `job:new` socket event, so the app renders a
  * live card and a fetched card with one piece of code.
  */
-type TechnicianJobOffer = TechnicianOffer & {
-  serviceRequest: {
-    id: bigint;
-    title: string;
-    description: string;
-    requestType: string;
-    serviceCity: string;
-    aiSeverity: string | null;
-
-    category: {
-      name: string;
-      pricing: Array<{
-        severity: string;
-        minPrice: any;
-        maxPrice: any;
-      }>;
-    };
-
-    attachments: Array<{
-      imageUrl: string;
-    }>;
-
-    customer: {
-      fullName: string | null;
-    };
-  };
-};
-
+type TechnicianJobRow = Prisma.TechnicianOfferGetPayload<{ include: typeof technicianJobInclude }>;
 /**
  * TASK 10 - one card in the technician's feed.
  */
 export function toTechnicianJobResponse(
-  offer: TechnicianJobOffer,
+  offer: TechnicianJobRow,
   distanceKm: number,
   fee: FeeBounds,
 ) {
@@ -126,10 +99,34 @@ export function toTechnicianJobResponse(
  * This is also the payload of the `offer:new` socket event. If the two ever
  * differ, the list and the live insert draw different cards.
  */
+type OfferForCustomerRow =
+  Prisma.TechnicianOfferGetPayload<{
+    include: typeof offerForCustomerCardInclude;
+  }>;
+
 export function toOfferForCustomerResponse(
-  offer: TechnicianOffer,
+  offer: OfferForCustomerRow,
   distanceKm: number,
 ) {
-  // TODO(task 11)
-  throw ApiError.notImplemented();
+  const technician = offer.technician;
+  const profile = technician.technicianProfile;
+
+  return {
+    id: offer.id.toString(),
+    consultationFee: offer.consultationFee?.toFixed(2) ?? null,
+    submittedAt: offer.submittedAt,
+
+    technician: {
+      id: technician.id.toString(),
+      fullName: technician.fullName,
+      profileImage: profile?.profileImage ?? null,
+      overallRating: profile?.overallRating.toFixed(2) ?? "0.00",
+      totalReviews: profile?.totalReviews ?? 0,
+      pastOrdersCount: technician._count.requestsAsTechnician,
+      categoryName: profile?.category.name ?? null,
+      city: technician.city,
+    },
+
+    distanceKm: distanceKm.toFixed(2),
+  };
 }

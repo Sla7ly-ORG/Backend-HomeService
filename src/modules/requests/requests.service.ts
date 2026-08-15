@@ -11,7 +11,15 @@ import type {
 } from "./requests.schema.js";
 import { estimateProblem } from "../ai/ai.client.js";
 import { spendPoints } from "../points/points.service.js";
-
+import {
+  fanOutOffers,
+  OFFER_FEE_MAX_MULTIPLIER,
+  OFFER_FEE_MIN_MULTIPLIER,
+  technicianJobInclude,
+} from "../offers/offers.service.js";
+import { toTechnicianJobResponse } from "../offers/offers.mapper.js";
+import { emitJobNew } from "../../realtime/realtime.emit.js";
+import { distanceKm } from "../../core/geo.js";
 /**
  * TASKS 7, 8 & 10 - all database access for service requests.
  *
@@ -194,7 +202,10 @@ export async function listCustomerRequests(
  * stranger that the id exists, and `customerId` is in the `where` rather than
  * in an `if`, so there is no shape of this function that leaks one.
  */
-export async function getCustomerRequest(customerId: bigint, requestId: bigint) {
+export async function getCustomerRequest(
+  customerId: bigint,
+  requestId: bigint,
+) {
   const request = await prisma.serviceRequest.findFirst({
     where: { id: requestId, customerId },
     include: requestDetailInclude,
@@ -427,6 +438,168 @@ export async function publishServiceRequest(
   customerId: bigint,
   requestId: bigint,
 ) {
-  // TODO(task 10)
-  throw ApiError.notImplemented();
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.serviceRequest.findFirst({
+      where: {
+        id: requestId,
+        customerId,
+      },
+    });
+
+    if (!existing) {
+      throw ApiError.notFound(messages.requests.notFound);
+    }
+
+    if (existing.status !== "PENDING") {
+      throw ApiError.conflict(messages.requests.notDraft);
+    }
+
+    /**
+     * AI_ESTIMATION requests must have an AI result before publishing.
+     * CONSULTATION requests do not need an estimate.
+     */
+    if (
+      existing.requestType === "AI_ESTIMATION" &&
+      existing.aiSeverity === null
+    ) {
+      throw ApiError.conflict(messages.requests.estimationMissing);
+    }
+
+    /**
+     * Publish first, then fan-out inside the same transaction.
+     */
+    const request = await tx.serviceRequest.update({
+      where: {
+        id: requestId,
+      },
+
+      data: {
+        status: "WAITING_FOR_TECHNICIAN",
+      },
+    });
+
+    const technicianIds = await fanOutOffers(tx, request);
+
+    return {
+      request,
+      technicianIds,
+    };
+  });
+
+  /**
+   * Never emit before the transaction commits.
+   *
+   * Re-read the request after commit so all relations required by the
+   * technician card are available.
+   */
+  const request = await prisma.serviceRequest.findUniqueOrThrow({
+    where: {
+      id: requestId,
+    },
+
+    include: requestDetailInclude,
+  });
+
+  /**
+   * No nearby technicians is valid.
+   * The request remains WAITING_FOR_TECHNICIAN.
+   */
+  if (result.technicianIds.length === 0) {
+    return {
+      request,
+      technicianCount: 0,
+    };
+  }
+
+  /**
+   * Load the created offers with exactly the shape required
+   * by toTechnicianJobResponse.
+   */
+  const offers = await prisma.technicianOffer.findMany({
+    where: {
+      serviceRequestId: requestId,
+      technicianId: {
+        in: result.technicianIds,
+      },
+    },
+
+    include: technicianJobInclude,
+  });
+
+  /**
+   * Load technician locations once.
+   * Each technician receives a card containing THEIR distance.
+   */
+  const technicians = await prisma.user.findMany({
+    where: {
+      id: {
+        in: result.technicianIds,
+      },
+    },
+
+    select: {
+      id: true,
+      latitude: true,
+      longitude: true,
+    },
+  });
+
+  const locationById = new Map(
+    technicians.map((technician) => [
+      technician.id.toString(),
+      technician,
+    ]),
+  );
+
+  const origin = {
+    lat: request.serviceLatitude.toNumber(),
+    lng: request.serviceLongitude.toNumber(),
+  };
+
+  const basePrice = request.category.homeVisitBasePrice.toNumber();
+
+  const fee = {
+  suggested: basePrice.toFixed(2),
+  min: (basePrice * OFFER_FEE_MIN_MULTIPLIER).toFixed(2),
+  max: (basePrice * OFFER_FEE_MAX_MULTIPLIER).toFixed(2),
+};
+
+  /**
+   * job:new is emitted AFTER the transaction.
+   *
+   * Distance is calculated separately for every technician.
+   */
+  for (const offer of offers) {
+    const technician = locationById.get(
+      offer.technicianId.toString(),
+    );
+
+    let jobDistanceKm = 0;
+
+    if (
+      technician?.latitude !== null &&
+      technician?.latitude !== undefined &&
+      technician?.longitude !== null &&
+      technician?.longitude !== undefined
+    ) {
+      jobDistanceKm = distanceKm(origin, {
+        lat: technician.latitude.toNumber(),
+        lng: technician.longitude.toNumber(),
+      });
+    }
+
+    emitJobNew(
+      [offer.technicianId],
+      toTechnicianJobResponse(
+        offer,
+        jobDistanceKm,
+        fee,
+      ),
+    );
+  }
+
+  return {
+    request,
+    technicianCount: result.technicianIds.length,
+  };
 }

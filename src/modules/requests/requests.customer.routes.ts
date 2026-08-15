@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { ApiError } from "../../core/errors.js";
 import { paginationMeta } from "../../core/pagination.js";
 import { currentUser } from "../auth/auth.middleware.js";
 import * as requestsService from "./requests.service.js";
+import * as offersService from "../offers/offers.service.js";
 import {
   toAiEstimationResponse,
   toServiceRequestListItem,
@@ -12,7 +12,13 @@ import {
   createServiceRequestBody,
   listMyRequestsQuery,
   requestIdParams,
+  requestOfferParams,
 } from "./requests.schema.js";
+import {
+  emitJobClosed,
+  emitRequestUpdated,
+} from "../../realtime/realtime.emit.js";
+import { toOfferForCustomerResponse } from "../offers/offers.mapper.js";
 
 /**
  * TASKS 7, 8, 10 & 11 - everything a customer does with their own requests,
@@ -75,16 +81,17 @@ requestsCustomerRoutes.get("/:id", async (req, res) => {
 /** POST /api/v1/customer/requests/:id/cancel */
 requestsCustomerRoutes.post("/:id/cancel", async (req, res) => {
   const { id } = requestIdParams.parse(req.params);
-  const { request } = await requestsService.cancelServiceRequest(
+  const { request, technicianIds } = await requestsService.cancelServiceRequest(
     currentUser(req).id,
     id,
   );
 
-  // TODO(task 10): the service also hands back `technicianIds` - the
-  // technicians whose offers this just closed. Emit to them here, after the
-  // write:
-  //   emitJobClosed(technicianIds, id, "CANCELLED");
-  //   emitRequestUpdated(currentUser(req).id, id, "CANCELLED");
+  // The technicians whose offers this just closed - emit after the write.
+  if (technicianIds.length > 0) {
+    emitJobClosed(technicianIds, id, "CANCELLED");
+  }
+  emitRequestUpdated(currentUser(req).id, id, "CANCELLED");
+
   res.json({ data: toServiceRequestResponse(request) });
 });
 
@@ -103,28 +110,47 @@ requestsCustomerRoutes.post("/:id/ai-estimation", async (req, res) => {
   });
 });
 /** POST /api/v1/customer/requests/:id/publish - the Send button. */
-requestsCustomerRoutes.post("/:id/publish", async (_req, res) => {
-  // TODO(task 10): publishServiceRequest ->
-  //   res.json({ data: { request: toServiceRequestResponse(request),
-  //                      technicianCount } });
-  // technicianCount: 0 is a 200, not an error. See the service.
-  throw ApiError.notImplemented();
+requestsCustomerRoutes.post("/:id/publish", async (req, res) => {
+  const { id } = requestIdParams.parse(req.params);
+  const { request, technicianCount } =
+    await requestsService.publishServiceRequest(currentUser(req).id, id);
+
+  // technicianCount: 0 is a 200, not an error - see the service.
+  emitRequestUpdated(currentUser(req).id, id, "WAITING_FOR_TECHNICIAN");
+
+  res.json({
+    data: { request: toServiceRequestResponse(request), technicianCount },
+  });
 });
 
 /** GET /api/v1/customer/requests/:id/offers - who answered, and for how much. */
-requestsCustomerRoutes.get("/:id/offers", async (_req, res) => {
-  // TODO(task 11): listRequestOffers ->
-  //   res.json({ data: offers.map(...toOfferForCustomerResponse) });
-  // No `meta`: at most MAX_OFFERS_PER_REQUEST of them ever exist.
-  throw ApiError.notImplemented();
-});
+requestsCustomerRoutes.get("/:id/offers", async (req, res) => {
+  const { id } = requestIdParams.parse(req.params);
+  const offers = await offersService.listRequestOffers(currentUser(req).id, id);
 
+  // No `meta`: at most MAX_OFFERS_PER_REQUEST of them ever exist.
+  res.json({
+    data: offers.map(({ offer, distanceKm }) =>
+      toOfferForCustomerResponse(offer, distanceKm),
+    ),
+  });
+});
 /** POST /api/v1/customer/requests/:id/offers/:offerId/accept */
-requestsCustomerRoutes.post("/:id/offers/:offerId/accept", async (_req, res) => {
-  // TODO(task 11): parse requestOfferParams, call acceptOffer, reply with the
-  // request - which now carries the technician and their phone number.
-  //
+requestsCustomerRoutes.post("/:id/offers/:offerId/accept", async (req, res) => {
+  const { id, offerId } = requestOfferParams.parse(req.params);
+
   // The three emits (job:selected to the winner, job:closed to the rest,
-  // request:updated to the customer) belong in the service, after the commit.
-  throw ApiError.notImplemented();
+  // request:updated to the customer) happen inside the service, after the
+  // commit.
+  await offersService.acceptOffer(currentUser(req).id, id, offerId);
+
+  // Re-read through the customer's own mapper so the response carries the
+  // technician and their phone number - toServiceRequestResponse is the
+  // single place that decides when that's visible.
+  const request = await requestsService.getCustomerRequest(
+    currentUser(req).id,
+    id,
+  );
+
+  res.json({ data: toServiceRequestResponse(request) });
 });

@@ -5,6 +5,7 @@ import { boundingBox, distanceKm } from "../../core/geo.js";
 import { messages } from "../../core/messages.js";
 import { prisma } from "../../core/prisma.js";
 import { skipTake } from "../../core/pagination.js";
+import { emitJobClosed, emitJobSelected, emitRequestUpdated } from "../../realtime/realtime.emit.js";
 
 /**
  * TASKS 10 & 11 - the fan-out, the technician's feed, and the customer's
@@ -35,6 +36,43 @@ const PAST_JOBS_WHERE: Prisma.ServiceRequestWhereInput = {
     notIn: ["PENDING", "WAITING_FOR_TECHNICIAN", "CANCELLED"],
   },
 };
+export const offerForCustomerCardInclude = {
+  technician: {
+    include: {
+      technicianProfile: {
+        include: {
+          category: true,
+        },
+      },
+
+      _count: {
+        select: {
+          requestsAsTechnician: {
+            where: PAST_JOBS_WHERE,
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.TechnicianOfferInclude;
+
+export const technicianJobInclude = {
+  serviceRequest: {
+    include: {
+      category: {
+        include: {
+          pricing: true,
+        },
+      },
+      attachments: true,
+      customer: {
+        select: {
+          fullName: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.TechnicianOfferInclude;
 
 /**
  * TASK 10 - one PENDING offer row per eligible technician, inside the publish
@@ -234,25 +272,7 @@ export async function listTechnicianJobs(
     prisma.technicianOffer.findMany({
       where,
 
-      include: {
-        serviceRequest: {
-          include: {
-            category: {
-              include: {
-                pricing: true,
-              },
-            },
-
-            attachments: true,
-
-            customer: {
-              select: {
-                fullName: true,
-              },
-            },
-          },
-        },
-      },
+      include: technicianJobInclude,
 
       orderBy: {
         createdAt: "desc",
@@ -347,12 +367,6 @@ export async function submitOffer(
   data: SubmitOfferBody,
 ) {
   const result = await prisma.$transaction(async (tx) => {
-    /**
-     * We need the category price to calculate the dynamic bounds.
-     *
-     * This is NOT used to decide whether the offer is still available.
-     * The actual availability check happens in the conditional update below.
-     */
     const offer = await tx.technicianOffer.findFirst({
       where: {
         id: offerId,
@@ -388,10 +402,6 @@ export async function submitOffer(
 
     const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
 
-    /**
-     * Category-dependent validation belongs in the service,
-     * not in Zod.
-     */
     if (data.consultationFee < minFee || data.consultationFee > maxFee) {
       throw ApiError.badRequest(
         messages.offers.feeOutOfRange(minFee.toFixed(2), maxFee.toFixed(2)),
@@ -399,14 +409,36 @@ export async function submitOffer(
     }
 
     /**
-     * The important concurrency guard.
-     *
-     * All of these must still be true:
-     * - this offer belongs to this technician
-     * - it is still PENDING
-     * - the request is still WAITING_FOR_TECHNICIAN
-     *
-     * If another action changed any of them, count === 0.
+     * Lock the request row so concurrent technicians submitting
+     * offers for the same request are serialized.
+     */
+    await tx.$queryRaw`
+      SELECT id
+      FROM service_requests
+      WHERE id = ${offer.serviceRequestId}
+        AND status = 'WAITING_FOR_TECHNICIAN'::"RequestStatus"
+      FOR UPDATE
+    `;
+
+    /**
+     * Count submitted offers while the request row is locked.
+     */
+    const submittedCount = await tx.technicianOffer.count({
+      where: {
+        serviceRequestId: offer.serviceRequestId,
+        status: "SUBMITTED",
+      },
+    });
+
+    /**
+     * Five offers already exist.
+     */
+    if (submittedCount >= MAX_OFFERS_PER_REQUEST) {
+      throw ApiError.conflict(messages.offers.enoughTechnicians);
+    }
+
+    /**
+     * PENDING -> SUBMITTED
      */
     const updated = await tx.technicianOffer.updateMany({
       where: {
@@ -431,31 +463,17 @@ export async function submitOffer(
     }
 
     /**
-     * Count submitted offers after this technician successfully
-     * submitted theirs.
+     * The current technician is now the next submitted offer.
      */
-    const submittedCount = await tx.technicianOffer.count({
-      where: {
-        serviceRequestId: offer.serviceRequestId,
-        status: "SUBMITTED",
-      },
-    });
-
-    /**
-     * More than the allowed number should never remain committed.
-     * Throwing here rolls the whole transaction back.
-     */
-    if (submittedCount > MAX_OFFERS_PER_REQUEST) {
-      throw ApiError.conflict(messages.offers.enoughTechnicians);
-    }
+    const newSubmittedCount = submittedCount + 1;
 
     let closedTechnicianIds: bigint[] = [];
 
     /**
-     * Exactly 5 submitted offers:
+     * Exactly five submitted offers:
      * close all remaining PENDING invitations.
      */
-    if (submittedCount === MAX_OFFERS_PER_REQUEST) {
+    if (newSubmittedCount === MAX_OFFERS_PER_REQUEST) {
       const pendingOffers = await tx.technicianOffer.findMany({
         where: {
           serviceRequestId: offer.serviceRequestId,
@@ -490,38 +508,15 @@ export async function submitOffer(
 
   /**
    * Everything below happens AFTER the transaction commits.
-   *
-   * Never emit inside the transaction.
    */
   const updatedOffer = await prisma.technicianOffer.findUniqueOrThrow({
     where: {
       id: offerId,
     },
 
-    include: {
-      technician: {
-        include: {
-          technicianProfile: {
-            include: {
-              category: true,
-            },
-          },
-
-          _count: {
-            select: {
-              requestsAsTechnician: {
-                where: PAST_JOBS_WHERE,
-              },
-            },
-          },
-        },
-      },
-    },
+    include: offerForCustomerCardInclude,
   });
 
-  /**
-   * Get request coordinates for the customer-side offer mapper.
-   */
   const request = await prisma.serviceRequest.findUniqueOrThrow({
     where: {
       id: result.requestId,
@@ -533,9 +528,6 @@ export async function submitOffer(
     },
   });
 
-  /**
-   * Get technician coordinates.
-   */
   const technician = await prisma.user.findUnique({
     where: {
       id: updatedOffer.technicianId,
@@ -567,9 +559,6 @@ export async function submitOffer(
     );
   }
 
-  /**
-   * Task 10 realtime events.
-   */
   const { emitOfferNew, emitJobClosed } =
     await import("../../realtime/realtime.emit.js");
 
@@ -649,8 +638,62 @@ export async function declineOffer(technicianId: bigint, offerId: bigint) {
  * on `TechnicianProfile`, not a cleverer query.
  */
 export async function listRequestOffers(customerId: bigint, requestId: bigint) {
-  // TODO(task 11)
-  throw ApiError.notImplemented();
+  const request = await prisma.serviceRequest.findFirst({
+    where: {
+      id: requestId,
+      customerId,
+    },
+
+    select: {
+      serviceLatitude: true,
+      serviceLongitude: true,
+    },
+  });
+
+  if (!request) {
+    throw ApiError.notFound(messages.requests.notFound);
+  }
+
+  const origin = {
+    lat: request.serviceLatitude.toNumber(),
+    lng: request.serviceLongitude.toNumber(),
+  };
+
+  const offers = await prisma.technicianOffer.findMany({
+    where: {
+      serviceRequestId: requestId,
+      status: "SUBMITTED",
+    },
+
+    include: offerForCustomerCardInclude,
+  });
+
+  return offers
+    .map((offer) => {
+      const { latitude, longitude } = offer.technician;
+
+      const offerDistanceKm =
+        latitude !== null && longitude !== null
+          ? distanceKm(origin, {
+              lat: latitude.toNumber(),
+              lng: longitude.toNumber(),
+            })
+          : 0;
+
+      return { offer, distanceKm: offerDistanceKm };
+    })
+    .sort((a, b) => {
+      if (a.distanceKm !== b.distanceKm) {
+        return a.distanceKm - b.distanceKm;
+      }
+
+      const ratingA =
+        a.offer.technician.technicianProfile?.overallRating.toNumber() ?? 0;
+      const ratingB =
+        b.offer.technician.technicianProfile?.overallRating.toNumber() ?? 0;
+
+      return ratingB - ratingA;
+    });
 }
 
 /**
@@ -687,6 +730,198 @@ export async function acceptOffer(
   requestId: bigint,
   offerId: bigint,
 ) {
-  // TODO(task 11)
-  throw ApiError.notImplemented();
+  const result = await prisma.$transaction(async (tx) => {
+    /**
+     * Read the offer inside the transaction.
+     *
+     * We need the technician id and the consultation fee because:
+     * - technicianId is copied to the request
+     * - consultationFee becomes the request's visitFee
+     *
+     * The fee MUST come from the database, never from the request body.
+     */
+    const offer = await tx.technicianOffer.findFirst({
+      where: {
+        id: offerId,
+        serviceRequestId: requestId,
+        status: "SUBMITTED",
+      },
+      select: {
+        technicianId: true,
+        consultationFee: true,
+      },
+    });
+
+    if (!offer) {
+       throw ApiError.conflict(messages.offers.notSubmitted);
+    }
+
+    /**
+     * Read the request coordinates so we can snapshot the distance
+     * onto the request.
+     */
+    const request = await tx.serviceRequest.findFirst({
+      where: {
+        id: requestId,
+        customerId,
+      },
+      select: {
+        serviceLatitude: true,
+        serviceLongitude: true,
+      },
+    });
+
+    if (!request) {
+      throw ApiError.notFound(messages.requests.notFound);
+    }
+
+    /**
+     * Technician location is needed only to calculate the distance
+     * that gets stored on the request.
+     */
+    const technician = await tx.user.findUnique({
+      where: {
+        id: offer.technicianId,
+      },
+      select: {
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    const acceptedDistanceKm =
+      technician?.latitude != null &&
+      technician?.longitude != null
+        ? distanceKm(
+            {
+              lat: request.serviceLatitude.toNumber(),
+              lng: request.serviceLongitude.toNumber(),
+            },
+            {
+              lat: technician.latitude.toNumber(),
+              lng: technician.longitude.toNumber(),
+            },
+          )
+        : 0;
+
+    /**
+     * The request is the lock.
+     *
+     * Only one customer action can change:
+     * WAITING_FOR_TECHNICIAN + technicianId null
+     *
+     * into:
+     * TECHNICIAN_SELECTED + technicianId set.
+     *
+     * If another accept already won, count === 0.
+     */
+    const { count: assignedCount } =
+      await tx.serviceRequest.updateMany({
+        where: {
+          id: requestId,
+          customerId,
+          status: "WAITING_FOR_TECHNICIAN",
+          technicianId: null,
+        },
+        data: {
+          technicianId: offer.technicianId,
+          status: "TECHNICIAN_SELECTED",
+          visitFee: offer.consultationFee,
+          distanceKm: acceptedDistanceKm,
+        },
+      });
+
+    if (assignedCount === 0) {
+      throw ApiError.conflict(messages.offers.alreadyAssigned);
+    }
+
+    /**
+     * Now close the selected offer.
+     *
+     * It must still be SUBMITTED.
+     */
+    const { count: selectedCount } =
+      await tx.technicianOffer.updateMany({
+        where: {
+          id: offerId,
+          serviceRequestId: requestId,
+          technicianId: offer.technicianId,
+          status: "SUBMITTED",
+        },
+        data: {
+          status: "SELECTED",
+        },
+      });
+
+    if (selectedCount === 0) {
+      throw ApiError.conflict(messages.offers.notSubmitted);
+    }
+
+    /**
+     * Collect the other technicians before closing their offers.
+     *
+     * PENDING = still waiting in technician feed
+     * SUBMITTED = technician already sent a fee
+     *
+     * Both disappear after somebody is selected.
+     */
+    const losingOffers = await tx.technicianOffer.findMany({
+      where: {
+        serviceRequestId: requestId,
+        id: { not: offerId },
+        status: {
+          in: ["PENDING", "SUBMITTED"],
+        },
+      },
+      select: {
+        technicianId: true,
+      },
+    });
+
+    await tx.technicianOffer.updateMany({
+      where: {
+        serviceRequestId: requestId,
+        id: { not: offerId },
+        status: {
+          in: ["PENDING", "SUBMITTED"],
+        },
+      },
+      data: {
+        status: "NOT_SELECTED",
+      },
+    });
+
+    return {
+      winnerTechnicianId: offer.technicianId,
+      loserTechnicianIds: losingOffers.map(
+        (losingOffer) => losingOffer.technicianId,
+      ),
+    };
+  });
+
+  /**
+   * Emit ONLY after the transaction commits.
+   *
+   * If the transaction rolls back, nobody should receive
+   * events describing a selection that never happened.
+   */
+  emitJobSelected(
+    result.winnerTechnicianId,
+    requestId,
+    offerId,
+  );
+
+  if (result.loserTechnicianIds.length > 0) {
+    emitJobClosed(
+      result.loserTechnicianIds,
+      requestId,
+      "TAKEN",
+    );
+  }
+
+  emitRequestUpdated(
+    customerId,
+    requestId,
+    "TECHNICIAN_SELECTED",
+  );
 }
