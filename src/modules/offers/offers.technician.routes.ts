@@ -1,5 +1,9 @@
 import { Router } from "express";
-import { ApiError } from "../../core/errors.js";
+import { jobIdParams, listJobsQuery, submitOfferBody } from "./offers.schema.js";
+import * as offersService from "./offers.service.js";
+import { currentUser } from "../auth/auth.middleware.js";
+import { toTechnicianJobResponse } from "./offers.mapper.js";
+import { paginationMeta } from "../../core/pagination.js";
 
 /**
  * TASK 10 - the technician's home screen, mounted at /api/v1/technician/jobs.
@@ -16,28 +20,46 @@ import { ApiError } from "../../core/errors.js";
 export const offersTechnicianRoutes = Router();
 
 /** GET /api/v1/technician/jobs?status=PENDING */
-offersTechnicianRoutes.get("/", async (_req, res) => {
-  // TODO(task 10): parse listJobsQuery, call listTechnicianJobs, then
-  //   res.json({ data: jobs.map(...toTechnicianJobResponse),
-  //              meta: paginationMeta(query, total) });
-  //
-  // `distanceKm` and the fee bounds are per job, so the service has to hand
-  // them out alongside each row - the mapper does not compute anything.
-  throw ApiError.notImplemented();
+offersTechnicianRoutes.get("/", async (req, res) => {
+  const query = listJobsQuery.parse(req.query);
+  const { jobs, total } = await offersService.listTechnicianJobs(
+    currentUser(req).id,
+    query,
+  );
+
+  // `distanceKm` and `feeBounds` are per job - the service hands them out
+  // alongside each row, the mapper does not compute anything.
+  res.json({
+    data: jobs.map(({ offer, distanceKm, feeBounds }) =>
+      toTechnicianJobResponse(offer, distanceKm, feeBounds),
+    ),
+    meta: paginationMeta(query, total),
+  });
 });
 
 /** POST /api/v1/technician/jobs/:id/offer - "I will do it for this much." */
-offersTechnicianRoutes.post("/:id/offer", async (_req, res) => {
-  // TODO(task 10): parse jobIdParams + submitOfferBody, call submitOffer,
-  // reply 200 with the updated offer.
-  //
+offersTechnicianRoutes.post("/:id/offer", async (req, res) => {
+  const { id } = jobIdParams.parse(req.params);
+  const body = submitOfferBody.parse(req.body);
+
   // 409 when the card is stale, 400 when the fee is out of range. Both come
   // from the service; this file only parses and replies.
-  throw ApiError.notImplemented();
+  const offer = await offersService.submitOffer(currentUser(req).id, id, body);
+
+  res.json({
+    data: {
+      id: offer.id.toString(),
+      status: offer.status,
+      consultationFee: offer.consultationFee?.toFixed(2) ?? null,
+      submittedAt: offer.submittedAt,
+    },
+  });
 });
 
 /** POST /api/v1/technician/jobs/:id/decline */
-offersTechnicianRoutes.post("/:id/decline", async (_req, res) => {
-  // TODO(task 10): declineOffer -> 200 with the updated offer.
-  throw ApiError.notImplemented();
+offersTechnicianRoutes.post("/:id/decline", async (req, res) => {
+  const { id } = jobIdParams.parse(req.params);
+  const offer = await offersService.declineOffer(currentUser(req).id, id);
+
+  res.json({ data: { id: offer.id.toString(), status: offer.status } });
 });

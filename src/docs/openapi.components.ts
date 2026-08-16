@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  OfferStatus,
   PointsTransactionType,
   RequestStatus,
   RequestType,
@@ -119,10 +120,15 @@ export function queryParams(
   }));
 }
 
-/** The `:id` in a URL. Always a string here - see `idField` in core/fields.ts. */
-export function idPathParam(description: string) {
+/**
+ * An id in a URL. Always a string here - see `idField` in core/fields.ts.
+ *
+ * `name` is a parameter because one route takes two of them:
+ * `/customer/requests/{id}/offers/{offerId}/accept`.
+ */
+export function idPathParam(description: string, name = "id") {
   return {
-    name: "id",
+    name,
     in: "path",
     required: true,
     description,
@@ -525,6 +531,154 @@ export const schemas: Record<string, JsonSchema> = {
     ],
   },
 
+  /**
+   * Task 10. Mirrors `toTechnicianJobResponse` in offers.mapper.ts.
+   *
+   * The `id` is the **offer** row, not the request: it is what every action on
+   * this card is addressed to.
+   */
+  TechnicianJob: {
+    type: "object",
+    description:
+      "One card in the technician's feed - an invitation to price a job. **No phone number, no street address and no exact coordinates**: fifty technicians see this card and at most one gets the job. A first name, the city and a distance is the whole of it until they are chosen.",
+    properties: {
+      id: bigIntId(
+        "31",
+        "The offer row. This is the `{id}` in `/api/v1/technician/jobs/{id}/offer`, **not** the request id.",
+      ),
+      status: { type: "string", enum: Object.values(OfferStatus) },
+      createdAt: timestamp("When the fan-out put this card in their feed."),
+      request: {
+        type: "object",
+        description: "The job itself, as much of it as a stranger may see.",
+        properties: {
+          id: bigIntId("12", "The request being offered on."),
+          title: { type: "string", example: "Kitchen sink is leaking" },
+          description: {
+            type: "string",
+            example:
+              "Water under the sink since yesterday, the pipe joint is wet.",
+          },
+          categoryName: { type: "string", example: "سباكة" },
+          requestType: { type: "string", enum: Object.values(RequestType) },
+          images: {
+            type: "array",
+            items: { type: "string", example: "/uploads/1712-sink.jpg" },
+          },
+          aiEstimation: nullable(schemaRef("AiEstimation")),
+          customer: {
+            type: "object",
+            properties: {
+              fullName: nullable({ type: "string", example: "Mona Ali" }),
+              city: {
+                type: "string",
+                description:
+                  "The city the **job** is in, off the request's own address snapshot - not wherever the customer's profile says they live.",
+                example: "Giza",
+              },
+              distanceKm: {
+                type: "string",
+                description:
+                  "From this technician to the job. Per recipient, which is why `job:new` is emitted once per technician rather than once per request.",
+                example: "3.40",
+              },
+            },
+            required: ["fullName", "city", "distanceKm"],
+          },
+        },
+        required: [
+          "id",
+          "title",
+          "description",
+          "categoryName",
+          "requestType",
+          "images",
+          "aiEstimation",
+          "customer",
+        ],
+      },
+      fee: {
+        type: "object",
+        description:
+          "What to prefill the fee input with, and the bounds the server will accept - so the keypad can stop them before the `400` does. Deliberately nowhere near `aiEstimation`: that is a guess at the repair, this is what the technician charges to show up.",
+        properties: {
+          suggested: {
+            type: "string",
+            description: "The category's usual home-visit price.",
+            example: "150.00",
+          },
+          min: { type: "string", example: "75.00" },
+          max: { type: "string", example: "450.00" },
+        },
+        required: ["suggested", "min", "max"],
+      },
+    },
+    required: ["id", "status", "createdAt", "request", "fee"],
+  },
+
+  /** Task 11. Mirrors `toOfferForCustomerResponse` in offers.mapper.ts. */
+  OfferForCustomer: {
+    type: "object",
+    description:
+      "One technician's answer, as the customer chooses between them. Still no phone number - that arrives on the request itself once this offer is accepted, and `toServiceRequestResponse` is the single place that decides it.",
+    properties: {
+      id: bigIntId(
+        "31",
+        "The offer row. This is the `{offerId}` in the accept URL.",
+      ),
+      consultationFee: nullable({
+        type: "string",
+        description:
+          "What they charge to come out and look. Money is a Decimal, so a string. Never null on a listed offer - the list only carries `SUBMITTED` ones - but the column is nullable because a fan-out row starts life as an invitation with no fee on it.",
+        example: "180.00",
+      }),
+      submittedAt: nullable(timestamp("When they sent the fee.")),
+      technician: {
+        type: "object",
+        properties: {
+          id: bigIntId("7", "The technician."),
+          fullName: nullable({ type: "string", example: "Karim Fathy" }),
+          profileImage: nullable({
+            type: "string",
+            example: "/uploads/1712-karim.jpg",
+          }),
+          overallRating: {
+            type: "string",
+            description: "0.00 for a technician nobody has reviewed yet.",
+            example: "4.60",
+          },
+          totalReviews: { type: "integer", example: 12 },
+          pastOrdersCount: {
+            type: "integer",
+            description:
+              "Jobs they were *given*, not jobs they finished: the job lifecycle does not exist yet, and a screen full of `0` helps nobody choose.",
+            example: 34,
+          },
+          categoryName: nullable({ type: "string", example: "سباكة" }),
+          city: nullable({ type: "string", example: "Cairo" }),
+          distanceKm: {
+            type: "string",
+            description:
+              "From the technician to the job. The list is sorted on it, nearest first, with `overallRating` descending as the tie-break.",
+            example: "3.40",
+          },
+        },
+        required: [
+          "id",
+          "fullName",
+          "profileImage",
+          "overallRating",
+          "totalReviews",
+          "pastOrdersCount",
+          "categoryName",
+          "city",
+          "distanceKm",
+        ],
+      },
+    },
+    required: ["id", "consultationFee", "submittedAt", "technician"],
+  },
+
   /** Task 1. Mirrors the `toCategoryResponse` described in categories.mapper.ts. */
   Category: {
     type: "object",
@@ -629,7 +783,7 @@ export const schemas: Record<string, JsonSchema> = {
     type: "object",
     description:
       "`job:new` → technician. The payload **is one element of `GET /api/v1/technician/jobs`** - same mapper, so a card rendered from the list and a card rendered from this event cannot look different. Task 10 emits it, once per technician, because `distanceKm` differs per recipient.",
-    properties: {},
+    allOf: [schemaRef("TechnicianJob")],
   },
 
   JobClosedEvent: {
@@ -666,9 +820,8 @@ export const schemas: Record<string, JsonSchema> = {
     properties: {
       requestId: bigIntId("12", "The request the fee is for."),
       offer: {
-        type: "object",
         description: "One offer card, task 11's mapper.",
-        properties: {},
+        allOf: [schemaRef("OfferForCustomer")],
       },
     },
     required: ["requestId", "offer"],
