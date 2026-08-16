@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { ApiError } from "../../core/errors.js";
 import { jobIdParams, listJobsQuery, submitOfferBody } from "./offers.schema.js";
 import * as offersService from "./offers.service.js";
 import { currentUser } from "../auth/auth.middleware.js";

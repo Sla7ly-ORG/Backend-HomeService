@@ -202,10 +202,7 @@ export async function listCustomerRequests(
  * stranger that the id exists, and `customerId` is in the `where` rather than
  * in an `if`, so there is no shape of this function that leaks one.
  */
-export async function getCustomerRequest(
-  customerId: bigint,
-  requestId: bigint,
-) {
+export async function getCustomerRequest(customerId: bigint, requestId: bigint) {
   const request = await prisma.serviceRequest.findFirst({
     where: { id: requestId, customerId },
     include: requestDetailInclude,
@@ -559,10 +556,10 @@ export async function publishServiceRequest(
   const basePrice = request.category.homeVisitBasePrice.toNumber();
 
   const fee = {
-  suggested: basePrice.toFixed(2),
-  min: (basePrice * OFFER_FEE_MIN_MULTIPLIER).toFixed(2),
-  max: (basePrice * OFFER_FEE_MAX_MULTIPLIER).toFixed(2),
-};
+    suggested: basePrice.toFixed(2),
+    min: (basePrice * OFFER_FEE_MIN_MULTIPLIER).toFixed(2),
+    max: (basePrice * OFFER_FEE_MAX_MULTIPLIER).toFixed(2),
+  };
 
   /**
    * job:new is emitted AFTER the transaction.

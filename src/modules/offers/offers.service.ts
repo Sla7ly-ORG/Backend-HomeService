@@ -5,7 +5,13 @@ import { boundingBox, distanceKm } from "../../core/geo.js";
 import { messages } from "../../core/messages.js";
 import { prisma } from "../../core/prisma.js";
 import { skipTake } from "../../core/pagination.js";
-import { emitJobClosed, emitJobSelected, emitRequestUpdated } from "../../realtime/realtime.emit.js";
+import {
+  emitJobClosed,
+  emitJobSelected,
+  emitOfferNew,
+  emitRequestUpdated,
+} from "../../realtime/realtime.emit.js";
+import { toOfferForCustomerResponse } from "./offers.mapper.js";
 
 /**
  * TASKS 10 & 11 - the fan-out, the technician's feed, and the customer's
@@ -18,12 +24,10 @@ import { emitJobClosed, emitJobSelected, emitRequestUpdated } from "../../realti
  * `count === 0` -> 409, is what makes that safe. A `findFirst` and an `if` lets
  * both through.
  *
- * TODO(task 10): the constants, named here, never typed inline:
- *   FANOUT_RADIUS_KM        25
- *   FANOUT_MAX_TECHNICIANS  50
- *   MAX_OFFERS_PER_REQUEST   5
- *   OFFER_FEE_MIN_MULTIPLIER 0.5
- *   OFFER_FEE_MAX_MULTIPLIER 3
+ * The five numbers the whole flow turns on are named here and never typed
+ * inline: requests.service.ts prices the technician's card off the same two
+ * multipliers this file validates against, and a literal in one of the two
+ * places is how those quietly stop matching.
  */
 export const FANOUT_RADIUS_KM = 25;
 export const FANOUT_MAX_TECHNICIANS = 50;
@@ -367,6 +371,12 @@ export async function submitOffer(
   data: SubmitOfferBody,
 ) {
   const result = await prisma.$transaction(async (tx) => {
+    /**
+     * We need the category price to calculate the dynamic bounds.
+     *
+     * This is NOT used to decide whether the offer is still available.
+     * The actual availability check happens in the conditional update below.
+     */
     const offer = await tx.technicianOffer.findFirst({
       where: {
         id: offerId,
@@ -402,6 +412,10 @@ export async function submitOffer(
 
     const maxFee = basePrice * OFFER_FEE_MAX_MULTIPLIER;
 
+    /**
+     * Category-dependent validation belongs in the service,
+     * not in Zod.
+     */
     if (data.consultationFee < minFee || data.consultationFee > maxFee) {
       throw ApiError.badRequest(
         messages.offers.feeOutOfRange(minFee.toFixed(2), maxFee.toFixed(2)),
@@ -438,7 +452,14 @@ export async function submitOffer(
     }
 
     /**
-     * PENDING -> SUBMITTED
+     * PENDING -> SUBMITTED, and the important concurrency guard.
+     *
+     * All of these must still be true:
+     * - this offer belongs to this technician
+     * - it is still PENDING
+     * - the request is still WAITING_FOR_TECHNICIAN
+     *
+     * If another action changed any of them, count === 0.
      */
     const updated = await tx.technicianOffer.updateMany({
       where: {
@@ -508,6 +529,8 @@ export async function submitOffer(
 
   /**
    * Everything below happens AFTER the transaction commits.
+   *
+   * Never emit inside the transaction.
    */
   const updatedOffer = await prisma.technicianOffer.findUniqueOrThrow({
     where: {
@@ -517,6 +540,9 @@ export async function submitOffer(
     include: offerForCustomerCardInclude,
   });
 
+  /**
+   * Get request coordinates for the customer-side offer mapper.
+   */
   const request = await prisma.serviceRequest.findUniqueOrThrow({
     where: {
       id: result.requestId,
@@ -528,6 +554,9 @@ export async function submitOffer(
     },
   });
 
+  /**
+   * Get technician coordinates.
+   */
   const technician = await prisma.user.findUnique({
     where: {
       id: updatedOffer.technicianId,
@@ -559,11 +588,9 @@ export async function submitOffer(
     );
   }
 
-  const { emitOfferNew, emitJobClosed } =
-    await import("../../realtime/realtime.emit.js");
-
-  const { toOfferForCustomerResponse } = await import("./offers.mapper.js");
-
+  /**
+   * Task 10 realtime events.
+   */
   emitOfferNew(
     result.customerId,
     result.requestId,
@@ -753,7 +780,7 @@ export async function acceptOffer(
     });
 
     if (!offer) {
-       throw ApiError.conflict(messages.offers.notSubmitted);
+      throw ApiError.conflict(messages.offers.notSubmitted);
     }
 
     /**

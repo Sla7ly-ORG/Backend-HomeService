@@ -513,7 +513,7 @@ Authorization: Bearer <accessToken>
 // 201
 { "data": { "id": "12", "status": "PENDING", "requestType": "AI_ESTIMATION",
             "title": "Kitchen sink leaking", "images": [ … ],
-            "category": { "id": "1", "name": "سباكة" },
+            "categoryId": "1", "categoryName": "سباكة",
             "aiEstimation": null, "offersCount": 0, … } }
 ```
 
@@ -690,7 +690,7 @@ Authorization: Bearer <technician accessToken>
       "title": "Kitchen sink leaking",
       "description": "Water under the sink since yesterday…",
       "images": ["/uploads/1712-sink.jpg"],
-      "category": { "id": "1", "name": "سباكة" },
+      "categoryName": "سباكة",
       "aiEstimation": { "severity": "MEDIUM", "confidence": "0.8180",
                         "minPrice": "375.00", "maxPrice": "900.00" },
       "customer": { "fullName": "Mona", "city": "Giza", "distanceKm": "3.40" } },

@@ -109,6 +109,7 @@ requestsCustomerRoutes.post("/:id/ai-estimation", async (req, res) => {
     },
   });
 });
+
 /** POST /api/v1/customer/requests/:id/publish - the Send button. */
 requestsCustomerRoutes.post("/:id/publish", async (req, res) => {
   const { id } = requestIdParams.parse(req.params);
@@ -135,6 +136,7 @@ requestsCustomerRoutes.get("/:id/offers", async (req, res) => {
     ),
   });
 });
+
 /** POST /api/v1/customer/requests/:id/offers/:offerId/accept */
 requestsCustomerRoutes.post("/:id/offers/:offerId/accept", async (req, res) => {
   const { id, offerId } = requestOfferParams.parse(req.params);
@@ -152,5 +154,7 @@ requestsCustomerRoutes.post("/:id/offers/:offerId/accept", async (req, res) => {
     id,
   );
 
-  res.json({ data: toServiceRequestResponse(request) });
+  // `{ data: { request } }`, not a bare request: the same envelope publish
+  // answers with, and the one docs/APP-FLOW.md tells the app to read.
+  res.json({ data: { request: toServiceRequestResponse(request) } });
 });

@@ -31,7 +31,6 @@ const consultationFee = z.coerce
   .refine((n) => Number(n.toFixed(2)) === n, {
     message: messages.fields.feeDecimals,
   });
-
 export const submitOfferBody = z.object({ consultationFee });
 
 /**

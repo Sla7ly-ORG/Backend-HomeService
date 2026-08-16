@@ -28,6 +28,10 @@ import {
   listMyRequestsQuery,
 } from "../modules/requests/requests.schema.js";
 import {
+  listJobsQuery,
+  submitOfferBody,
+} from "../modules/offers/offers.schema.js";
+import {
   dataOf,
   fromZod,
   idPathParam,
@@ -755,11 +759,8 @@ export const openApiDocument = {
     },
 
     // -----------------------------------------------------------------------
-    // /api/v1/customer/requests - task 7, the problem and the past orders
-    //
-    // The other four routes in this group (AI estimation, publish, offers,
-    // accept) belong to tasks 8, 10 and 11 and still answer 501, so they are
-    // not described here yet.
+    // /api/v1/customer/requests - tasks 7, 8, 10 & 11: the problem, the
+    // estimate, the Send button, and choosing who answers.
     // -----------------------------------------------------------------------
     "/api/v1/customer/requests": {
       post: {
@@ -875,6 +876,114 @@ export const openApiDocument = {
       },
     },
 
+    "/api/v1/customer/requests/{id}/publish": {
+      post: {
+        tags: ["Customer"],
+        operationId: "publishServiceRequest",
+        summary: "Send it to the technicians",
+        description: [
+          "The Send button, and the moment a draft stops being private. Every verified, available technician in that category within 25 km gets a card in their feed - nearest 50 if more qualify - and a `job:new` over the socket.",
+          "",
+          "**`technicianCount: 0` is a `200`, not an error.** Nobody in that field is near them yet. Say so on the waiting screen and offer to cancel; do not sit there waiting, because the fan-out has already happened and a technician who signs up tomorrow will not see this request.",
+          "",
+          "`409` means it was published already, or it is an `AI_ESTIMATION` with no estimate on it yet - buy the estimate first.",
+          "",
+          "No body.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "Published, and how many technicians it reached.",
+            dataOf(
+              object({
+                request: schemaRef("ServiceRequest"),
+                technicianCount: {
+                  type: "integer",
+                  description:
+                    "How many technicians the fan-out reached. `0` is a success.",
+                  example: 7,
+                },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}/offers": {
+      get: {
+        tags: ["Customer"],
+        operationId: "listRequestOffers",
+        summary: "Who answered, and for how much",
+        description: [
+          "The waiting screen's list: every technician who has sent a fee, nearest first, `overallRating` descending as the tie-break.",
+          "",
+          "**Not paginated, and there is no `meta`** - the request closes itself after the fifth fee, so five is the most that can ever be here.",
+          "",
+          "Call it once when the screen opens and let `offer:new` do the rest; call it again on reconnect and on pull-to-refresh. The socket carries this exact object, from this exact mapper, so a live insert and a fetched row cannot draw different cards.",
+        ].join("\n"),
+        parameters: [idPathParam("The request id.")],
+        responses: {
+          200: jsonResponse(
+            "Every fee sent so far, nearest first.",
+            {
+              type: "object",
+              properties: {
+                data: {
+                  type: "array",
+                  items: schemaRef("OfferForCustomer"),
+                },
+              },
+              required: ["data"],
+            },
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+        },
+      },
+    },
+
+    "/api/v1/customer/requests/{id}/offers/{offerId}/accept": {
+      post: {
+        tags: ["Customer"],
+        operationId: "acceptOffer",
+        summary: "Hire this one",
+        description: [
+          "Assigns the technician, moves the request to `TECHNICIAN_SELECTED`, and closes every other offer on it - the four who were not chosen get a `job:closed` with `reason: \"TAKEN\"` and drop the card themselves. You do not have to do anything with them.",
+          "",
+          "**The technician's phone number appears in the response and not before.** Up to here they were a photo, a distance and a rating.",
+          "",
+          "The accepted `consultationFee` is **copied onto the request** as `visitFee`, read off the offer row inside the transaction. It is never taken from a request body - a fee the client sends is a fee the client chose - and it does not move afterwards, whatever the repair itself later costs.",
+          "",
+          "`409` means this request already has a technician (two taps on a slow connection) or that offer never carried a fee. Refetch the offers list and show what is actually there.",
+          "",
+          "No body.",
+        ].join("\n"),
+        parameters: [
+          idPathParam("The request id."),
+          idPathParam("The offer being accepted.", "offerId"),
+        ],
+        responses: {
+          200: jsonResponse(
+            "The request, now carrying the technician and their phone number.",
+            dataOf(object({ request: schemaRef("ServiceRequest") })),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+
     // -----------------------------------------------------------------------
     // /api/v1/technician
     // -----------------------------------------------------------------------
@@ -907,6 +1016,132 @@ export const openApiDocument = {
           401: responseRef("Unauthorized"),
           403: responseRef("Forbidden"),
           404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+
+    // -----------------------------------------------------------------------
+    // /api/v1/technician/jobs - task 10. "Jobs" on this side of the wire,
+    // `technician_offers` in the database: the row is an invitation until a fee
+    // lands on it. Every `{id}` below is the **offer** id.
+    // -----------------------------------------------------------------------
+    "/api/v1/technician/jobs": {
+      get: {
+        tags: ["Technician"],
+        operationId: "listTechnicianJobs",
+        summary: "My job feed",
+        description: [
+          "Jobs in **their** category, within 25 km, that are still open - newest first.",
+          "",
+          "`fee.suggested` is what the category normally goes for, so prefill the input with it; `fee.min` and `fee.max` are the bounds the server will accept, so the keypad can stop them before the `400` does.",
+          "",
+          "`aiEstimation` is `null` on a `CONSULTATION` and on an `AI_ESTIMATION` the customer has not paid for yet - show the photo and the description alone. There is no `summary`: the model returns a severity, not prose.",
+          "",
+          "The feed fills up live over `job:new`, but every card in it is also one row of this endpoint. The socket is a speed-up; this is the truth, and the app re-reads it on every reconnect.",
+        ].join("\n"),
+        parameters: [
+          ...queryParams(listJobsQuery, {
+            page: "1-based page number.",
+            limit: "Rows per page, at most 100.",
+            status:
+              "`PENDING` (default) the new ones · `SUBMITTED` fees I have sent and am waiting on · `DECLINED` ones I dismissed. Not `SELECTED` / `NOT_SELECTED`: those are the customer's side of the story and there is no screen for them.",
+          }),
+        ],
+        responses: {
+          200: jsonResponse(
+            "One page of the feed.",
+            listOf(schemaRef("TechnicianJob")),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+        },
+      },
+    },
+
+    "/api/v1/technician/jobs/{id}/offer": {
+      post: {
+        tags: ["Technician"],
+        operationId: "submitOffer",
+        summary: "I will come out for this much",
+        description: [
+          "Puts a fee on the invitation: `PENDING` → `SUBMITTED`. The customer sees it appear on their waiting screen as an `offer:new`.",
+          "",
+          "**A fee is sent once.** There is no editing it - decline and let it go if it was wrong.",
+          "",
+          "`400` means the fee is outside `fee.min … fee.max` from the card. Those bounds are half to three times the category's home-visit price, so they cannot live in the request schema: they depend on which job this is.",
+          "",
+          "`409` covers every reason the card is stale, with one message, because the next move is the same in all of them - drop the card and refresh the feed: somebody else was picked, the customer cancelled, five fees are already in, or this one was answered.",
+        ].join("\n"),
+        parameters: [
+          idPathParam(
+            "The **offer** id - the `id` on the card, not the request id.",
+          ),
+        ],
+        requestBody: jsonBody(
+          withExamples(fromZod(submitOfferBody), { consultationFee: 180 }),
+        ),
+        responses: {
+          200: jsonResponse(
+            "The fee is in.",
+            dataOf(
+              object({
+                id: {
+                  type: "string",
+                  pattern: "^\\d+$",
+                  example: "31",
+                },
+                status: { type: "string", example: "SUBMITTED" },
+                consultationFee: {
+                  type: ["string", "null"],
+                  example: "180.00",
+                },
+                submittedAt: {
+                  type: ["string", "null"],
+                  format: "date-time",
+                },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+
+    "/api/v1/technician/jobs/{id}/decline": {
+      post: {
+        tags: ["Technician"],
+        operationId: "declineOffer",
+        summary: "Not interested",
+        description: [
+          "`PENDING` → `DECLINED`. It hides one card, on the screen that asked for it - nothing else changes and nobody is notified. Pass `?status=DECLINED` to the feed to see them again.",
+          "",
+          "`409` on a card that is already gone, same as sending a fee.",
+          "",
+          "No body.",
+        ].join("\n"),
+        parameters: [
+          idPathParam(
+            "The **offer** id - the `id` on the card, not the request id.",
+          ),
+        ],
+        responses: {
+          200: jsonResponse(
+            "Dismissed.",
+            dataOf(
+              object({
+                id: { type: "string", pattern: "^\\d+$", example: "31" },
+                status: { type: "string", example: "DECLINED" },
+              }),
+            ),
+          ),
+          400: responseRef("ValidationError"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
           409: responseRef("Conflict"),
         },
       },
